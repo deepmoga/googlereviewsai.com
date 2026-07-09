@@ -1,0 +1,6 @@
+old/
+review-system.zip
+uploads/*
+!uploads/.gitkeep
+.env
+*.log
