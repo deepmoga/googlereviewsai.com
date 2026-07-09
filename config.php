@@ -8,7 +8,7 @@ define('DB_USER', 'root');       // Change to your DB user
 define('DB_PASS', '');           // Change to your DB password
 define('DB_NAME', 'review_system');
 
-define('APP_URL', 'http://localhost/github/review-system'); // Change to your domain
+define('APP_URL', 'https://aigooglereviews.in'); // Change to your domain
 define('UPLOAD_DIR', __DIR__ . '/uploads/');
 define('UPLOAD_URL', APP_URL . '/uploads/');
 

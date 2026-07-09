@@ -6,98 +6,245 @@ if (isCustomerLoggedIn()) {
     exit;
 }
 
-$error = '';
-$success = '';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = trim($_POST['name'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $phone = normalizeIndianPhone($_POST['phone'] ?? '');
-    $password = $_POST['password'] ?? '';
-    $confirm = $_POST['confirm_password'] ?? '';
-
-    if ($name === '' || strlen($name) < 2) {
-        $error = 'Please enter your full name.';
-    } elseif (!isValidIndianPhone($phone)) {
-        $error = 'Please enter a valid Indian WhatsApp number.';
-    } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Please enter a valid email address.';
-    } elseif (strlen($password) < 8) {
-        $error = 'Password must be at least 8 characters.';
-    } elseif ($password !== $confirm) {
-        $error = 'Password confirmation does not match.';
-    } else {
-        $db = getDB();
-        $stmt = $db->prepare("SELECT id FROM customers WHERE phone = ? OR (email IS NOT NULL AND email != '' AND email = ?)");
-        $stmt->execute([$phone, $email]);
-
-        if ($stmt->fetch()) {
-            $error = 'An account already exists with this phone or email.';
-        } else {
-            $db->prepare("INSERT INTO customers (name, phone, email, password_hash, is_active, created_at)
-                VALUES (?, ?, ?, ?, 1, NOW())")
-                ->execute([$name, $phone, $email !== '' ? $email : null, password_hash($password, PASSWORD_DEFAULT)]);
-
-            $customerId = $db->lastInsertId();
-            $otp = createCustomerOtp($customerId, $phone, 'register');
-            $send = sendWhatsAppOtp($phone, $otp);
-
-            $_SESSION['pending_customer_id'] = $customerId;
-            if (!$send['success']) {
-                $_SESSION['otp_warning'] = 'Account created, but WhatsApp OTP could not be sent: ' . $send['message'];
-            }
-
-            header('Location: ' . APP_URL . '/customer/verify-otp.php');
-            exit;
-        }
-    }
-}
+$db = getDB();
+$plans = $db->query("SELECT * FROM plans WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
+$addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
+$rzpKey = getSetting('razorpay_key_id') ?: '';
+$requestedPlanId = intval($_GET['plan'] ?? 0);
+$planIds = array_map(function ($plan) {
+    return (int) $plan['id'];
+}, $plans);
+$defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)) ? $requestedPlanId : ($plans ? (int) $plans[0]['id'] : 0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Register - Official AI Review</title>
+  <title>Register & Buy Plan - Official AI Review</title>
   <style>
-    :root{--primary:#058a36;--gold:#f0b400;--text:#102016;--muted:#667569;--line:#dce8df;--bg:#f6fbf7;--radius:8px}
+    :root{--primary:#058a36;--primary-dark:#04662a;--gold:#f0b400;--text:#102016;--muted:#667569;--line:#dce8df;--bg:#f6fbf7;--radius:8px}
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#073f20,#058a36);min-height:100vh;display:grid;place-items:center;padding:24px;color:var(--text)}
-    .card{width:min(100%,480px);background:#fff;border-radius:var(--radius);padding:30px;box-shadow:0 24px 70px rgba(0,0,0,.22)}
+    body{font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#073f20,#058a36);min-height:100vh;padding:28px;color:var(--text)}
+    a{color:inherit;text-decoration:none}
+    .shell{width:min(1120px,100%);margin:0 auto;display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:22px;align-items:start}
+    .panel{background:#fff;border-radius:var(--radius);padding:28px;box-shadow:0 24px 70px rgba(0,0,0,.22)}
     .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
     .mark{width:44px;height:44px;border:2px solid var(--gold);border-radius:var(--radius);display:grid;place-items:center;color:var(--primary);font-weight:900}
-    h1{font-size:1.6rem}.lead{color:var(--muted);margin-top:5px}
+    h1{font-size:1.65rem;line-height:1.15}.lead{color:var(--muted);margin-top:6px;line-height:1.5}
     label{display:block;margin:14px 0 7px;color:var(--muted);font-size:.78rem;font-weight:800;text-transform:uppercase}
     input{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:var(--radius);font-size:1rem}
     input:focus{outline:2px solid rgba(5,138,54,.14);border-color:var(--primary)}
-    .btn{width:100%;border:0;border-radius:var(--radius);padding:13px;background:var(--primary);color:#fff;font-weight:800;margin-top:18px;cursor:pointer}
-    .alert{padding:12px;border-radius:var(--radius);margin:14px 0;font-size:.9rem}.alert-error{background:#fee2e2;color:#991b1b}.alert-success{background:#dcfce7;color:#166534}
-    .links{text-align:center;margin-top:18px;color:var(--muted);font-size:.92rem}.links a{color:var(--primary);font-weight:800;text-decoration:none}
+    .plans,.addons{display:grid;gap:12px;margin-top:16px}
+    .plan-card,.addon-card{position:relative;border:1px solid var(--line);border-radius:var(--radius);padding:18px;background:#fbfff9;cursor:pointer}
+    .plan-card input,.addon-card input{position:absolute;opacity:0;pointer-events:none}
+    .plan-card.active,.addon-card.active{border-color:var(--primary);box-shadow:0 0 0 3px rgba(5,138,54,.12)}
+    .plan-top,.addon-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+    .plan-card h2,.addon-card h3{font-size:1.05rem;line-height:1.25}
+    .price{font-size:1.7rem;font-weight:900;color:var(--primary);white-space:nowrap}
+    .desc{color:var(--muted);font-size:.92rem;margin-top:8px;line-height:1.45}
+    .buy-badge{display:inline-flex;margin-top:12px;border-radius:999px;padding:7px 10px;background:#fff4c5;color:#3a2b00;font-size:.78rem;font-weight:900}
+    .summary{border:1px solid var(--line);border-radius:var(--radius);padding:16px;background:#f8fcf8;margin-top:18px}
+    .summary-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;color:var(--muted);font-size:.95rem}
+    .summary-row.total{border-top:1px solid var(--line);margin-top:6px;padding-top:12px;color:var(--text);font-weight:900;font-size:1.12rem}
+    .btn{width:100%;border:0;border-radius:var(--radius);padding:14px;background:var(--primary);color:#fff;font-weight:900;margin-top:18px;cursor:pointer;font-size:1rem}
+    .btn:hover{background:var(--primary-dark)}.btn:disabled{opacity:.58;cursor:not-allowed}
+    .alert{padding:12px;border-radius:var(--radius);margin:14px 0;font-size:.9rem}.alert-error{background:#fee2e2;color:#991b1b}.alert-info{background:#eff6ff;color:#1e40af}
+    .links{text-align:center;margin-top:18px;color:var(--muted);font-size:.92rem}.links a{color:var(--primary);font-weight:800}
+    @media(max-width:860px){body{padding:16px}.shell{grid-template-columns:1fr}.panel{padding:22px}.plan-top,.addon-top{flex-direction:column}.price{font-size:1.45rem}}
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="brand"><div class="mark">G★</div><div><h1>Create account</h1><p class="lead">Start your Google Review dashboard.</p></div></div>
-    <?php if ($error): ?><div class="alert alert-error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-    <form method="POST">
-      <label>Name *</label>
-      <input type="text" name="name" required value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
+  <div class="shell">
+    <section class="panel">
+      <div class="brand"><div class="mark">G*</div><div><h1>Create account after payment</h1><p class="lead">Choose a plan, pay securely, then verify your WhatsApp number.</p></div></div>
+      <?php if ($rzpKey === ''): ?>
+        <div class="alert alert-info">Razorpay is not configured yet. Registration is payment-first, so checkout will work after admin adds Razorpay keys.</div>
+      <?php endif; ?>
+      <form id="registerForm">
+        <label>Name *</label>
+        <input type="text" name="name" required value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
 
-      <label>WhatsApp Number *</label>
-      <input type="tel" name="phone" required placeholder="9780551900" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
+        <label>WhatsApp Number *</label>
+        <input type="tel" name="phone" required placeholder="9780551900" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
 
-      <label>Email</label>
-      <input type="email" name="email" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
+        <label>Email</label>
+        <input type="email" name="email" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
 
-      <label>Password *</label>
-      <input type="password" name="password" required minlength="8">
+        <label>Password *</label>
+        <input type="password" name="password" required minlength="8">
 
-      <label>Confirm Password *</label>
-      <input type="password" name="confirm_password" required minlength="8">
+        <label>Confirm Password *</label>
+        <input type="password" name="confirm_password" required minlength="8">
 
-      <button class="btn" type="submit">Send WhatsApp OTP</button>
-    </form>
-    <div class="links">Already registered? <a href="<?= APP_URL ?>/customer/login.php">Login</a></div>
+        <div class="summary" aria-live="polite">
+          <div class="summary-row"><span>Selected plan</span><strong id="summaryPlan">-</strong></div>
+          <div class="summary-row"><span>Addons</span><strong id="summaryAddons">INR 0</strong></div>
+          <div class="summary-row total"><span>Total today</span><strong id="summaryTotal">INR 0</strong></div>
+        </div>
+
+        <button class="btn" id="payButton" type="submit" <?= (!$plans || $rzpKey === '') ? 'disabled' : '' ?>>Pay & Create Account</button>
+      </form>
+      <div id="message"></div>
+      <div class="links">
+        Already registered? <a href="<?= APP_URL ?>/customer/login.php">Login</a><br>
+        By paying, you agree to the <a href="<?= APP_URL ?>/terms-and-conditions.php" target="_blank" rel="noopener">Terms</a>
+        and <a href="<?= APP_URL ?>/privacy-policy.php" target="_blank" rel="noopener">Privacy Policy</a>.
+      </div>
+    </section>
+
+    <section class="panel">
+      <h1>Choose pricing plan</h1>
+      <p class="lead">An account is created only after successful payment. Plans activate your customer dashboard and Google Review page.</p>
+
+      <div class="plans">
+        <?php foreach ($plans as $plan): ?>
+          <label class="plan-card" data-plan-card data-price="<?= htmlspecialchars($plan['price']) ?>" data-name="<?= htmlspecialchars($plan['name']) ?>">
+            <input type="radio" name="plan_id" form="registerForm" value="<?= (int) $plan['id'] ?>" required <?= (int) $plan['id'] === $defaultPlanId ? 'checked' : '' ?>>
+            <div class="plan-top">
+              <div>
+                <h2><?= htmlspecialchars($plan['name']) ?></h2>
+                <p class="desc"><?= htmlspecialchars($plan['description'] ?: $plan['duration_days'] . ' days access') ?></p>
+              </div>
+              <div class="price">INR <?= number_format((float) $plan['price'], 0) ?></div>
+            </div>
+            <span class="buy-badge">Buy this plan</span>
+          </label>
+        <?php endforeach; ?>
+      </div>
+
+      <?php if ($addons): ?>
+        <h1 style="margin-top:26px">Addons</h1>
+        <p class="lead">Optional one-time items can be included with your first payment.</p>
+        <div class="addons">
+          <?php foreach ($addons as $addon): ?>
+            <label class="addon-card" data-addon-card data-price="<?= htmlspecialchars($addon['price']) ?>">
+              <input type="checkbox" name="addons[]" form="registerForm" value="<?= (int) $addon['id'] ?>">
+              <div class="addon-top">
+                <div>
+                  <h3><?= htmlspecialchars($addon['name']) ?></h3>
+                  <p class="desc"><?= htmlspecialchars($addon['description'] ?: 'One-time addon') ?></p>
+                </div>
+                <div class="price">INR <?= number_format((float) $addon['price'], 0) ?></div>
+              </div>
+            </label>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+    </section>
   </div>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script>
+  const RAZORPAY_KEY = <?= json_encode($rzpKey) ?>;
+  const form = document.getElementById('registerForm');
+  const message = document.getElementById('message');
+  const payButton = document.getElementById('payButton');
+
+  function formatInr(value) {
+    return 'INR ' + Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  }
+
+  function selectedPlanCard() {
+    const selected = document.querySelector('input[name="plan_id"]:checked');
+    return selected ? selected.closest('[data-plan-card]') : null;
+  }
+
+  function updateSelection() {
+    document.querySelectorAll('[data-plan-card]').forEach(card => {
+      card.classList.toggle('active', card.querySelector('input').checked);
+    });
+    document.querySelectorAll('[data-addon-card]').forEach(card => {
+      card.classList.toggle('active', card.querySelector('input').checked);
+    });
+
+    const plan = selectedPlanCard();
+    const planAmount = plan ? Number(plan.dataset.price) : 0;
+    const addonAmount = Array.from(document.querySelectorAll('[data-addon-card] input:checked'))
+      .reduce((sum, input) => sum + Number(input.closest('[data-addon-card]').dataset.price), 0);
+
+    document.getElementById('summaryPlan').textContent = plan ? `${plan.dataset.name} - ${formatInr(planAmount)}` : '-';
+    document.getElementById('summaryAddons').textContent = formatInr(addonAmount);
+    document.getElementById('summaryTotal').textContent = formatInr(planAmount + addonAmount);
+  }
+
+  document.querySelectorAll('[data-plan-card] input,[data-addon-card] input').forEach(input => {
+    input.addEventListener('change', updateSelection);
+  });
+  updateSelection();
+
+  function showError(text) {
+    message.innerHTML = `<div class="alert alert-error">${text}</div>`;
+  }
+
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    message.innerHTML = '';
+
+    if (!RAZORPAY_KEY) {
+      showError('Razorpay keys are not configured. Please contact admin.');
+      return;
+    }
+    if (!form.reportValidity()) {
+      return;
+    }
+
+    payButton.disabled = true;
+    payButton.textContent = 'Creating secure order...';
+
+    try {
+      const res = await fetch('<?= APP_URL ?>/customer/create-registration-order.php', { method: 'POST', body: new FormData(form) });
+      const data = await res.json();
+      if (!data.success) {
+        showError(data.message || 'Could not create payment order.');
+        payButton.disabled = false;
+        payButton.textContent = 'Pay & Create Account';
+        return;
+      }
+
+      const options = {
+        key: RAZORPAY_KEY,
+        amount: data.amount,
+        currency: 'INR',
+        name: 'Official AI Review',
+        description: data.description,
+        order_id: data.razorpay_order_id,
+        prefill: {
+          name: form.elements['name'].value,
+          email: form.elements['email'].value,
+          contact: form.elements['phone'].value
+        },
+        modal: {
+          ondismiss: function () {
+            payButton.disabled = false;
+            payButton.textContent = 'Pay & Create Account';
+          }
+        },
+        handler: async function (response) {
+          payButton.textContent = 'Verifying payment...';
+          const verify = new FormData();
+          verify.append('pending_registration_id', data.pending_registration_id);
+          verify.append('razorpay_order_id', response.razorpay_order_id);
+          verify.append('razorpay_payment_id', response.razorpay_payment_id);
+          verify.append('razorpay_signature', response.razorpay_signature);
+          const vr = await fetch('<?= APP_URL ?>/customer/verify-registration-payment.php', { method: 'POST', body: verify });
+          const result = await vr.json();
+          if (result.success) {
+            window.location.href = result.redirect;
+          } else {
+            showError(result.message || 'Payment verification failed.');
+            payButton.disabled = false;
+            payButton.textContent = 'Pay & Create Account';
+          }
+        }
+      };
+      new Razorpay(options).open();
+    } catch (error) {
+      showError('Checkout could not start. Please try again.');
+      payButton.disabled = false;
+      payButton.textContent = 'Pay & Create Account';
+    }
+  });
+  </script>
 </body>
 </html>

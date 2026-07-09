@@ -6,6 +6,9 @@ $phoneDisplay = '97805-51900';
 $phoneDial = '9780551900';
 $whatsappNumber = '919780551900';
 $email = 'info@officialdigitalmarketing.in';
+$db = getDB();
+$plans = $db->query("SELECT * FROM plans WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
+$addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -806,6 +809,82 @@ $email = 'info@officialdigitalmarketing.in';
       letter-spacing: 0.06em;
     }
 
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .pricing-card,
+    .addon-tile {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: 0 14px 38px rgba(16, 32, 22, 0.06);
+    }
+
+    .pricing-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      padding: 28px;
+    }
+
+    .pricing-card h3,
+    .addon-tile h3 {
+      font-size: 1.16rem;
+      line-height: 1.25;
+    }
+
+    .pricing-price {
+      margin: 16px 0 8px;
+      color: var(--primary);
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .pricing-card p,
+    .addon-tile p {
+      color: var(--muted);
+    }
+
+    .pricing-card .btn {
+      width: 100%;
+      margin-top: auto;
+    }
+
+    .pricing-meta {
+      display: inline-flex;
+      width: fit-content;
+      margin: 14px 0 24px;
+      border-radius: 999px;
+      padding: 7px 11px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-size: 0.82rem;
+      font-weight: 900;
+    }
+
+    .addons-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .addon-tile {
+      padding: 20px;
+      background: #fbfff9;
+    }
+
+    .addon-price {
+      margin: 10px 0 8px;
+      color: var(--secondary-dark);
+      font-size: 1.55rem;
+      font-weight: 900;
+    }
+
     .phone-strip {
       display: flex;
       align-items: center;
@@ -923,12 +1002,14 @@ $email = 'info@officialdigitalmarketing.in';
       .feature-grid,
       .benefit-grid,
       .google-review-cards,
+      .addons-row,
       .contact-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .demo-band,
       .google-layout,
+      .pricing-grid,
       .cta-inner {
         grid-template-columns: 1fr;
       }
@@ -990,6 +1071,7 @@ $email = 'info@officialdigitalmarketing.in';
       .feature-grid,
       .benefit-grid,
       .google-review-cards,
+      .addons-row,
       .contact-grid {
         grid-template-columns: 1fr;
       }
@@ -1050,6 +1132,7 @@ $email = 'info@officialdigitalmarketing.in';
       <nav class="nav-links" aria-label="Main navigation">
         <a href="#google-review">Google Review</a>
         <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
         <a href="#demo">Demo QR</a>
         <a href="#process">How It Works</a>
         <a href="#contact">Contact</a>
@@ -1221,6 +1304,44 @@ $email = 'info@officialdigitalmarketing.in';
       </div>
     </section>
 
+    <section class="section alt" id="pricing">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="section-kicker">Pricing Plans</div>
+          <h2>Buy a plan to activate your AI Google Review dashboard.</h2>
+          <p>Choose a plan first. The customer account is created only after successful payment, then WhatsApp OTP verification starts.</p>
+        </div>
+        <div class="pricing-grid">
+          <?php foreach ($plans as $plan): ?>
+            <article class="pricing-card">
+              <h3><?= htmlspecialchars($plan['name']) ?></h3>
+              <div class="pricing-price">INR <?= number_format((float) $plan['price'], 0) ?></div>
+              <p><?= htmlspecialchars($plan['description'] ?: $plan['duration_days'] . ' days access') ?></p>
+              <span class="pricing-meta"><?= (int) $plan['duration_days'] ?> days access</span>
+              <a class="btn btn-green" href="<?= APP_URL ?>/customer/register.php?plan=<?= (int) $plan['id'] ?>">Buy Plan</a>
+            </article>
+          <?php endforeach; ?>
+        </div>
+
+        <?php if ($addons): ?>
+          <div class="section-head" style="margin-top:46px;margin-bottom:20px">
+            <div class="section-kicker">Addons</div>
+            <h2>Optional extras for your review campaign.</h2>
+            <p>Addons can be selected during registration checkout or bought later from the billing dashboard.</p>
+          </div>
+          <div class="addons-row">
+            <?php foreach ($addons as $addon): ?>
+              <article class="addon-tile">
+                <h3><?= htmlspecialchars($addon['name']) ?></h3>
+                <div class="addon-price">INR <?= number_format((float) $addon['price'], 0) ?></div>
+                <p><?= htmlspecialchars($addon['description'] ?: 'One-time addon') ?></p>
+              </article>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+      </div>
+    </section>
+
     <section class="section" id="demo">
       <div class="wrap demo-band">
         <div class="qr-panel">
@@ -1363,7 +1484,11 @@ $email = 'info@officialdigitalmarketing.in';
   <footer class="site-footer">
     <div class="wrap footer-inner">
       <span>&copy; <?= date('Y') ?> <?= htmlspecialchars($siteName) ?>. All rights reserved.</span>
-      <span>Phone: <?= htmlspecialchars($phoneDisplay) ?> | Email: <?= htmlspecialchars($email) ?></span>
+      <span>
+        <a href="<?= APP_URL ?>/privacy-policy.php">Privacy Policy</a> |
+        <a href="<?= APP_URL ?>/terms-and-conditions.php">Terms & Conditions</a> |
+        Phone: <?= htmlspecialchars($phoneDisplay) ?> | Email: <?= htmlspecialchars($email) ?>
+      </span>
     </div>
   </footer>
 

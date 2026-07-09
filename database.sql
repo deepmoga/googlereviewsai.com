@@ -123,6 +123,32 @@ CREATE TABLE IF NOT EXISTS addon_purchases (
   CONSTRAINT fk_addon_purchase_addon FOREIGN KEY (addon_id) REFERENCES addons(id)
 );
 
+CREATE TABLE IF NOT EXISTS pending_registrations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  phone VARCHAR(20) NOT NULL,
+  email VARCHAR(190) NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  plan_id INT NOT NULL,
+  addon_ids TEXT NULL,
+  plan_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  addon_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  total_amount DECIMAL(10,2) NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+  razorpay_order_id VARCHAR(100) NULL,
+  razorpay_payment_id VARCHAR(100) NULL,
+  razorpay_signature VARCHAR(255) NULL,
+  status ENUM('created','paid','failed') NOT NULL DEFAULT 'created',
+  customer_id INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  paid_at DATETIME NULL,
+  INDEX idx_pending_registration_phone (phone),
+  INDEX idx_pending_registration_email (email),
+  INDEX idx_pending_registration_razorpay (razorpay_order_id),
+  CONSTRAINT fk_pending_registration_plan FOREIGN KEY (plan_id) REFERENCES plans(id),
+  CONSTRAINT fk_pending_registration_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS payment_orders (
   id INT AUTO_INCREMENT PRIMARY KEY,
   customer_id INT NOT NULL,
