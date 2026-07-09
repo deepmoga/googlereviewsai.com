@@ -3,4 +3,5 @@ review-system.zip
 uploads/*
 !uploads/.gitkeep
 .env
+config.env.php
 *.log

@@ -3,12 +3,34 @@
 // config.php - Database & App Configuration
 // ============================================
 
-define('DB_HOST', 'localhost');
-define('DB_USER', 'root');       // Change to your DB user
-define('DB_PASS', '');           // Change to your DB password
-define('DB_NAME', 'review_system');
+$httpHost = strtolower($_SERVER['HTTP_HOST'] ?? 'localhost');
+$hostOnly = preg_replace('/:\d+$/', '', $httpHost);
+$isLocal = in_array($hostOnly, ['localhost', '127.0.0.1', '::1'], true);
 
-define('APP_URL', 'https://aigooglereviews.in'); // Change to your domain
+$appConfig = [
+    'DB_HOST' => 'localhost',
+    'DB_USER' => 'root',
+    'DB_PASS' => '',
+    'DB_NAME' => $isLocal ? 'review_system' : 'aigooglereviews',
+    'APP_URL' => $isLocal
+        ? 'http://' . ($httpHost ?: 'localhost') . '/github/review-system'
+        : 'https://aigooglereviews.in',
+];
+
+$overrideFile = __DIR__ . '/config.env.php';
+if (is_file($overrideFile)) {
+    $overrides = require $overrideFile;
+    if (is_array($overrides)) {
+        $appConfig = array_merge($appConfig, $overrides);
+    }
+}
+
+define('DB_HOST', $appConfig['DB_HOST']);
+define('DB_USER', $appConfig['DB_USER']);
+define('DB_PASS', $appConfig['DB_PASS']);
+define('DB_NAME', $appConfig['DB_NAME']);
+
+define('APP_URL', rtrim($appConfig['APP_URL'], '/'));
 define('UPLOAD_DIR', __DIR__ . '/uploads/');
 define('UPLOAD_URL', APP_URL . '/uploads/');
 
