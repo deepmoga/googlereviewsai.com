@@ -39,6 +39,11 @@ if (!empty($client['link_expire_at']) && strtotime($client['link_expire_at']) < 
     exit;
 }
 
+if (!clientHasActiveSubscription($client)) {
+    echo json_encode(['error' => 'Plan is not active']);
+    exit;
+}
+
 // Get AI provider settings
 $aiProvider = getSetting('ai_provider') ?: 'openai';
 $wordLimit = intval(getSetting('review_word_limit') ?: 60);

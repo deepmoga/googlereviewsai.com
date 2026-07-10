@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 
-$siteName = 'Official AI Review';
+$siteName = 'AI Google Reviews';
 $email = 'info@officialdigitalmarketing.in';
 $phoneDisplay = '97805-51900';
 ?>

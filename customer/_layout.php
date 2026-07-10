@@ -6,7 +6,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><?= htmlspecialchars($pageTitle ?? 'Dashboard') ?> - Official AI Review</title>
+  <title><?= htmlspecialchars($pageTitle ?? 'Dashboard') ?> - AI Google Reviews</title>
   <style>
     :root {
       --primary:#058a36;
@@ -85,7 +85,7 @@
 <?php $activeNav = $activeNav ?? ''; ?>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand"><span class="brand-icon">G★</span><span>Official AI Review</span></div>
+    <div class="brand"><span class="brand-icon">G★</span><span>AI Google Reviews</span></div>
     <nav class="nav">
       <a class="<?= $activeNav === 'dashboard' ? 'active' : '' ?>" href="<?= APP_URL ?>/customer/dashboard.php">Dashboard</a>
       <a class="<?= $activeNav === 'profile' ? 'active' : '' ?>" href="<?= APP_URL ?>/customer/profile.php">Business Profile</a>

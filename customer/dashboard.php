@@ -40,15 +40,22 @@ include __DIR__ . '/_layout.php';
   <?php $reviewUrl = APP_URL . '/review.php?c=' . $client['slug']; ?>
   <div class="card">
     <h2><?= htmlspecialchars($client['company_name']) ?></h2>
-    <p class="muted" style="margin-bottom:16px"><?= htmlspecialchars($client['tagline'] ?: 'Your Google Review page is ready.') ?></p>
+    <p class="muted" style="margin-bottom:16px"><?= htmlspecialchars($client['tagline'] ?: ($subscription ? 'Your Google Review page is ready.' : 'Buy a plan to unlock your review page preview and sharing tools.')) ?></p>
     <div class="actions">
-      <a class="btn btn-primary" href="<?= htmlspecialchars($reviewUrl) ?>" target="_blank">Open Review Page</a>
       <a class="btn btn-light" href="<?= APP_URL ?>/customer/profile.php">Edit Profile</a>
-      <button class="btn btn-gold" type="button" onclick="copyText('<?= htmlspecialchars($reviewUrl, ENT_QUOTES) ?>')">Copy Link</button>
+      <?php if ($subscription): ?>
+        <a class="btn btn-primary" href="<?= htmlspecialchars($reviewUrl) ?>" target="_blank">Open Review Page</a>
+        <a class="btn btn-gold" href="<?= APP_URL ?>/customer/generate-pdf.php">Download PDF</a>
+        <button class="btn btn-gold" type="button" onclick="copyText('<?= htmlspecialchars($reviewUrl, ENT_QUOTES) ?>')">Copy Link</button>
+      <?php else: ?>
+        <a class="btn btn-primary" href="<?= APP_URL ?>/customer/billing.php">Buy Plan</a>
+      <?php endif; ?>
     </div>
-    <div style="margin-top:18px;padding:12px;border:1px solid var(--line);border-radius:var(--radius);word-break:break-all;color:var(--muted)">
-      <?= htmlspecialchars($reviewUrl) ?>
-    </div>
+    <?php if ($subscription): ?>
+      <div style="margin-top:18px;padding:12px;border:1px solid var(--line);border-radius:var(--radius);word-break:break-all;color:var(--muted)">
+        <?= htmlspecialchars($reviewUrl) ?>
+      </div>
+    <?php endif; ?>
   </div>
 <?php endif; ?>
 

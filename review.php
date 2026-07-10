@@ -24,6 +24,7 @@ $isExpired = false;
 if (!empty($client['link_expire_at'])) {
   $isExpired = strtotime($client['link_expire_at']) < time();
 }
+$hasActivePlan = clientHasActiveSubscription($client);
 
 $serviceOptions = [];
 if (!empty($client['service_options'])) {
@@ -491,10 +492,10 @@ $logoUrl = $client['logo_path'] ? UPLOAD_URL . $client['logo_path'] : null;
   </div>
 
   <!-- Star Rating -->
-  <?php if ($isExpired): ?>
+  <?php if ($isExpired || !$hasActivePlan): ?>
     <div class="expired-msg">
-      <strong>Plan Expired</strong><br>
-      This review link has expired. Please contact the business owner to reactivate it.
+      <strong><?= $isExpired ? 'Plan Expired' : 'Plan Not Active' ?></strong><br>
+      This review link is not active. Please contact the business owner to reactivate it.
     </div>
   <?php else: ?>
     <?php if (!empty($serviceOptions)): ?>

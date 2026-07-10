@@ -1,4 +1,4 @@
--- Official AI Review SaaS schema
+-- AI Google Reviews SaaS schema
 -- Run this on the review_system database before using customer login, plans, OTP, and payments.
 
 CREATE DATABASE IF NOT EXISTS review_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -169,8 +169,16 @@ CREATE TABLE IF NOT EXISTS payment_orders (
 
 INSERT IGNORE INTO plans (id, name, price, duration_days, description, is_active)
 VALUES
-  (1, 'Monthly Plan', 1000.00, 30, 'Official AI Review monthly access for one business profile.', 1),
-  (2, 'Yearly Plan', 10000.00, 365, 'Official AI Review yearly access for one business profile.', 1);
+  (1, 'Monthly Plan', 1000.00, 30, 'One business profile|30 days access|AI Google Reviews dashboard|QR review page', 1),
+  (2, 'Yearly Plan', 10000.00, 365, 'One business profile|365 days access|AI Google Reviews dashboard|QR review page', 1);
+
+UPDATE plans
+SET description = 'One business profile|30 days access|AI Google Reviews dashboard|QR review page'
+WHERE id = 1 AND (description IS NULL OR description = '' OR description LIKE '%monthly access for one business profile.%');
+
+UPDATE plans
+SET description = 'One business profile|365 days access|AI Google Reviews dashboard|QR review page'
+WHERE id = 2 AND (description IS NULL OR description = '' OR description LIKE '%yearly access for one business profile.%');
 
 INSERT IGNORE INTO addons (id, name, price, description, is_active)
 VALUES

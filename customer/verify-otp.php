@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verify OTP - Official AI Review</title>
+  <title>Verify OTP - AI Google Reviews</title>
   <style>
     :root{--primary:#058a36;--gold:#f0b400;--muted:#667569;--line:#dce8df;--radius:8px}
     *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#073f20,#058a36);min-height:100vh;display:grid;place-items:center;padding:24px}

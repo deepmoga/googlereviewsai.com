@@ -21,7 +21,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Register & Buy Plan - Official AI Review</title>
+  <title>Register & Buy Plan - AI Google Reviews</title>
   <style>
     :root{--primary:#058a36;--primary-dark:#04662a;--gold:#f0b400;--text:#102016;--muted:#667569;--line:#dce8df;--bg:#f6fbf7;--radius:8px}
     *{box-sizing:border-box;margin:0;padding:0}
@@ -43,6 +43,9 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
     .plan-card h2,.addon-card h3{font-size:1.05rem;line-height:1.25}
     .price{font-size:1.7rem;font-weight:900;color:var(--primary);white-space:nowrap}
     .desc{color:var(--muted);font-size:.92rem;margin-top:8px;line-height:1.45}
+    .feature-list{display:grid;gap:7px;margin:10px 0 0;padding:0;list-style:none;color:var(--muted);font-size:.92rem;text-transform:none;font-weight:400}
+    .feature-list li{position:relative;padding-left:19px;line-height:1.45}
+    .feature-list li::before{content:"";position:absolute;left:0;top:.62em;width:7px;height:7px;border-radius:50%;background:var(--primary)}
     .buy-badge{display:inline-flex;margin-top:12px;border-radius:999px;padding:7px 10px;background:#fff4c5;color:#3a2b00;font-size:.78rem;font-weight:900}
     .summary{border:1px solid var(--line);border-radius:var(--radius);padding:16px;background:#f8fcf8;margin-top:18px}
     .summary-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;color:var(--muted);font-size:.95rem}
@@ -79,8 +82,8 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
 
         <div class="summary" aria-live="polite">
           <div class="summary-row"><span>Selected plan</span><strong id="summaryPlan">-</strong></div>
-          <div class="summary-row"><span>Addons</span><strong id="summaryAddons">INR 0</strong></div>
-          <div class="summary-row total"><span>Total today</span><strong id="summaryTotal">INR 0</strong></div>
+          <div class="summary-row"><span>Addons</span><strong id="summaryAddons">₹0</strong></div>
+          <div class="summary-row total"><span>Total today</span><strong id="summaryTotal">₹0</strong></div>
         </div>
 
         <button class="btn" id="payButton" type="submit" <?= (!$plans || $rzpKey === '') ? 'disabled' : '' ?>>Pay & Create Account</button>
@@ -104,9 +107,13 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
             <div class="plan-top">
               <div>
                 <h2><?= htmlspecialchars($plan['name']) ?></h2>
-                <p class="desc"><?= htmlspecialchars($plan['description'] ?: $plan['duration_days'] . ' days access') ?></p>
+                <ul class="feature-list">
+                  <?php foreach (featureListFromText($plan['description'], $plan['duration_days'] . ' days access') as $feature): ?>
+                    <li><?= htmlspecialchars($feature) ?></li>
+                  <?php endforeach; ?>
+                </ul>
               </div>
-              <div class="price">INR <?= number_format((float) $plan['price'], 0) ?></div>
+              <div class="price">₹<?= number_format((float) $plan['price'], 0) ?></div>
             </div>
             <span class="buy-badge">Buy this plan</span>
           </label>
@@ -125,7 +132,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
                   <h3><?= htmlspecialchars($addon['name']) ?></h3>
                   <p class="desc"><?= htmlspecialchars($addon['description'] ?: 'One-time addon') ?></p>
                 </div>
-                <div class="price">INR <?= number_format((float) $addon['price'], 0) ?></div>
+                <div class="price">₹<?= number_format((float) $addon['price'], 0) ?></div>
               </div>
             </label>
           <?php endforeach; ?>
@@ -142,7 +149,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
   const payButton = document.getElementById('payButton');
 
   function formatInr(value) {
-    return 'INR ' + Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    return '₹' + Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
   }
 
   function selectedPlanCard() {
@@ -206,7 +213,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
         key: RAZORPAY_KEY,
         amount: data.amount,
         currency: 'INR',
-        name: 'Official AI Review',
+        name: 'AI Google Reviews',
         description: data.description,
         order_id: data.razorpay_order_id,
         prefill: {

@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 
-$siteName = 'Official AI Review';
+$siteName = 'AI Google Reviews';
 $phoneDisplay = '97805-51900';
 $phoneDial = '9780551900';
 $whatsappNumber = '919780551900';
@@ -15,7 +15,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Official AI Review helps businesses generate AI-powered Google Review suggestions, copy them easily, and share QR codes for fast Google Review collection.">
+  <meta name="description" content="AI Google Reviews helps businesses generate AI-powered Google Review suggestions, copy them easily, and share QR codes for fast Google Review collection.">
   <title><?= htmlspecialchars($siteName) ?> - AI Review Generate System</title>
   <style>
     :root {
@@ -844,7 +844,32 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
       line-height: 1;
     }
 
-    .pricing-card p,
+    .feature-list {
+      display: grid;
+      gap: 9px;
+      margin: 14px 0 18px;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+    }
+
+    .feature-list li {
+      position: relative;
+      padding-left: 22px;
+      line-height: 1.45;
+    }
+
+    .feature-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.62em;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--primary);
+    }
+
     .addon-tile p {
       color: var(--muted);
     }
@@ -868,7 +893,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
 
     .addons-row {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
       gap: 16px;
       margin-top: 18px;
     }
@@ -1149,7 +1174,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
   </header>
 
   <main id="top">
-    <section class="hero" aria-label="Official AI Review landing page">
+    <section class="hero" aria-label="AI Google Reviews landing page">
       <div class="wrap hero-inner">
         <div class="eyebrow"><span></span> AI review generate system with QR code sharing</div>
         <div class="hero-google-badge" aria-label="Google Review">
@@ -1214,7 +1239,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
           <div class="section-kicker">Google Review Highlight</div>
           <h2>AI helps customers write better Google Reviews faster.</h2>
           <p>
-            Official AI Review is designed around the Google Review journey. Customers scan your QR code, receive AI-written review suggestions, copy the review they like, and continue directly to your Google Review link.
+            AI Google Reviews is designed around the Google Review journey. Customers scan your QR code, receive AI-written review suggestions, copy the review they like, and continue directly to your Google Review link.
           </p>
           <div class="google-review-cards">
             <div class="google-review-card">
@@ -1250,7 +1275,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
           <div class="section-kicker">AI-Powered Review System</div>
           <h2>Make customer reviews easier to write, copy, and post with AI.</h2>
           <p>
-            Official AI Review removes friction from the Google Review process. Customers do not need to think for long or type from scratch. They choose their experience, receive AI-generated review suggestions, and continue to Google Review.
+            AI Google Reviews removes friction from the Google Review process. Customers do not need to think for long or type from scratch. They choose their experience, receive AI-generated review suggestions, and continue to Google Review.
           </p>
         </div>
         <div class="feature-grid">
@@ -1298,7 +1323,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
       <div class="wrap cta-inner">
         <div>
           <h2>Turn happy customers into AI-assisted public reviews while the experience is fresh.</h2>
-          <p>Use Official AI Review after service completion, at billing, after delivery, or during follow-up messages.</p>
+          <p>Use AI Google Reviews after service completion, at billing, after delivery, or during follow-up messages.</p>
         </div>
         <a class="btn btn-primary" href="tel:<?= htmlspecialchars($phoneDial) ?>">Call <?= htmlspecialchars($phoneDisplay) ?></a>
       </div>
@@ -1309,14 +1334,17 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
         <div class="section-head">
           <div class="section-kicker">Pricing Plans</div>
           <h2>Buy a plan to activate your AI Google Review dashboard.</h2>
-          <p>Choose a plan first. The customer account is created only after successful payment, then WhatsApp OTP verification starts.</p>
         </div>
         <div class="pricing-grid">
           <?php foreach ($plans as $plan): ?>
             <article class="pricing-card">
               <h3><?= htmlspecialchars($plan['name']) ?></h3>
-              <div class="pricing-price">INR <?= number_format((float) $plan['price'], 0) ?></div>
-              <p><?= htmlspecialchars($plan['description'] ?: $plan['duration_days'] . ' days access') ?></p>
+              <div class="pricing-price">₹<?= number_format((float) $plan['price'], 0) ?></div>
+              <ul class="feature-list">
+                <?php foreach (featureListFromText($plan['description'], $plan['duration_days'] . ' days access') as $feature): ?>
+                  <li><?= htmlspecialchars($feature) ?></li>
+                <?php endforeach; ?>
+              </ul>
               <span class="pricing-meta"><?= (int) $plan['duration_days'] ?> days access</span>
               <a class="btn btn-green" href="<?= APP_URL ?>/customer/register.php?plan=<?= (int) $plan['id'] ?>">Buy Plan</a>
             </article>
@@ -1333,7 +1361,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
             <?php foreach ($addons as $addon): ?>
               <article class="addon-tile">
                 <h3><?= htmlspecialchars($addon['name']) ?></h3>
-                <div class="addon-price">INR <?= number_format((float) $addon['price'], 0) ?></div>
+                <div class="addon-price">₹<?= number_format((float) $addon['price'], 0) ?></div>
                 <p><?= htmlspecialchars($addon['description'] ?: 'One-time addon') ?></p>
               </article>
             <?php endforeach; ?>
@@ -1346,7 +1374,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
       <div class="wrap demo-band">
         <div class="qr-panel">
           <div class="qr-shell">
-            <img src="demo-qr.png" alt="Demo QR code for Official AI Review">
+            <img src="demo-qr.png" alt="Demo QR code for AI Google Reviews">
           </div>
           <div class="scan-note">
             <div>
@@ -1423,7 +1451,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
       <div class="wrap cta-inner">
         <div>
           <h2>Ready to collect more reviews with less customer effort?</h2>
-          <p>Contact Official AI Review today and set up a clean AI review generation flow for your clients.</p>
+          <p>Contact AI Google Reviews today and set up a clean AI review generation flow for your clients.</p>
         </div>
         <a class="btn btn-green" href="https://wa.me/<?= htmlspecialchars($whatsappNumber) ?>" target="_blank" rel="noopener">
           <svg viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
@@ -1437,7 +1465,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
     <section class="section alt" id="contact">
       <div class="wrap">
         <div class="section-head">
-          <div class="section-kicker">Contact Official AI Review</div>
+          <div class="section-kicker">Contact AI Google Reviews</div>
           <h2>Talk to us about your AI review system setup.</h2>
           <p>Use phone, WhatsApp, or email. We can help you explain the AI review flow to clients and start using QR codes for review collection.</p>
         </div>
@@ -1472,7 +1500,7 @@ $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price AS
         </div>
         <div class="phone-strip">
           <div>
-            <strong>Official AI Review by Official Digital Marketing</strong>
+            <strong>AI Google Reviews by Official Digital Marketing</strong>
             <span>AI review generation, QR code sharing, and easy copy-paste review posting for client businesses.</span>
           </div>
           <a class="btn btn-green" href="mailto:<?= htmlspecialchars($email) ?>">Email Us</a>

@@ -35,7 +35,11 @@ include __DIR__ . '/_layout.php';
     <div class="card">
       <h2><?= htmlspecialchars($plan['name']) ?></h2>
       <p style="font-size:2rem;font-weight:900;color:var(--primary);margin:10px 0">₹<?= number_format($plan['price'], 0) ?></p>
-      <p class="muted" style="min-height:44px"><?= htmlspecialchars($plan['description'] ?: $plan['duration_days'] . ' days access') ?></p>
+      <ul class="muted" style="min-height:44px;margin:0 0 14px 18px;line-height:1.55">
+        <?php foreach (featureListFromText($plan['description'], $plan['duration_days'] . ' days access') as $feature): ?>
+          <li><?= htmlspecialchars($feature) ?></li>
+        <?php endforeach; ?>
+      </ul>
       <button class="btn btn-primary" type="button" onclick="buyItem('plan', <?= intval($plan['id']) ?>)">Buy Plan</button>
     </div>
   <?php endforeach; ?>
@@ -102,7 +106,7 @@ async function buyItem(type, id) {
     key: RAZORPAY_KEY,
     amount: data.amount,
     currency: 'INR',
-    name: 'Official AI Review',
+    name: 'AI Google Reviews',
     description: data.description,
     order_id: data.razorpay_order_id,
     prefill: {

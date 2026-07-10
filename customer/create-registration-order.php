@@ -109,5 +109,5 @@ echo json_encode([
     'pending_registration_id' => (int) $pendingId,
     'razorpay_order_id' => $rzp['id'],
     'amount' => (int) $rzp['amount'],
-    'description' => 'Official AI Review - ' . $plan['name']
+    'description' => 'AI Google Reviews - ' . $plan['name']
 ]);

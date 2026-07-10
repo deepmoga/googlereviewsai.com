@@ -183,6 +183,31 @@ function customerPlanExpiresAt($customerId) {
     return $subscription ? $subscription['expires_at'] : null;
 }
 
+function clientHasActiveSubscription($client) {
+    if (empty($client['customer_id'])) {
+        return false;
+    }
+    return activeCustomerSubscription((int) $client['customer_id']) !== null;
+}
+
+function featureListFromText($text, $fallback = '') {
+    $source = trim((string) ($text ?: $fallback));
+    if ($source === '') {
+        return [];
+    }
+
+    $items = preg_split('/\r\n|\r|\n|\|/', $source);
+    $features = [];
+    foreach ($items as $item) {
+        $item = trim($item);
+        $item = preg_replace('/^[-*•]\s*/', '', $item);
+        if ($item !== '') {
+            $features[] = $item;
+        }
+    }
+    return $features;
+}
+
 function createCustomerOtp($customerId, $phone, $purpose = 'register') {
     $db = getDB();
     $otp = (string) random_int(100000, 999999);
