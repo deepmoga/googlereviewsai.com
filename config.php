@@ -11,10 +11,10 @@ $appConfig = [
     'DB_HOST' => 'localhost',
     'DB_USER' => 'root',
     'DB_PASS' => '',
-    'DB_NAME' => $isLocal ? 'review_system' : 'aigooglereviews',
+    'DB_NAME' => $isLocal ? 'review_system' : 'googlereviewsai',
     'APP_URL' => $isLocal
         ? 'http://' . ($httpHost ?: 'localhost') . '/github/review-system'
-        : 'https://aigooglereviews.in',
+        : 'https://googlereviewsai.com',
 ];
 
 $overrideFile = __DIR__ . '/config.env.php';
