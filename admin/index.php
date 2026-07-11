@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="card">
   <div class="logo">
     <h1>⭐ Review Admin</h1>
-    <p>Sign in to manage your clients</p>
+    <p>Sign in to manage your customers</p>
   </div>
   <?php if ($error): ?>
     <div class="error"><?= htmlspecialchars($error) ?></div>

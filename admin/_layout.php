@@ -485,9 +485,6 @@
       <a class="nav-item <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/dashboard.php">
         <span class="nav-icon">📊</span> Dashboard
       </a>
-      <a class="nav-item <?= ($activeNav ?? '') === 'clients' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/clients.php">
-        <span class="nav-icon">🏢</span> Clients
-      </a>
       <a class="nav-item <?= ($activeNav ?? '') === 'customers' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/customers.php">
         <span class="nav-icon">👥</span> Customers
       </a>

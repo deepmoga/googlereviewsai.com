@@ -3,14 +3,21 @@ require_once __DIR__ . '/../config.php';
 requireLogin();
 
 $db = getDB();
-$totalClients = $db->query("SELECT COUNT(*) FROM clients")->fetchColumn();
-$activeClients = $db->query("SELECT COUNT(*) FROM clients WHERE is_active = 1")->fetchColumn();
+$totalBusinessProfiles = $db->query("SELECT COUNT(*) FROM clients")->fetchColumn();
+$activeBusinessProfiles = $db->query("SELECT COUNT(*) FROM clients WHERE is_active = 1")->fetchColumn();
 $totalCustomers = $db->query("SELECT COUNT(*) FROM customers")->fetchColumn();
 $activeSubscriptions = $db->query("SELECT COUNT(*) FROM customer_subscriptions WHERE status = 'active' AND expires_at >= NOW()")->fetchColumn();
 $paidRevenue = $db->query("SELECT COALESCE(SUM(amount), 0) FROM payment_orders WHERE status = 'paid'")->fetchColumn();
 $apiKey = getSetting('openai_api_key');
 
-$recentClients = $db->query("SELECT * FROM clients ORDER BY created_at DESC LIMIT 5")->fetchAll();
+$recentCustomers = $db->query("SELECT c.*, cl.id AS business_id, cl.company_name, cl.slug, cl.logo_path, cl.tagline, cl.is_active AS business_active
+  FROM customers c
+  LEFT JOIN clients cl ON cl.id = (
+    SELECT cl2.id FROM clients cl2
+    WHERE cl2.customer_id = c.id
+    ORDER BY cl2.created_at DESC, cl2.id DESC LIMIT 1
+  )
+  ORDER BY c.created_at DESC LIMIT 5")->fetchAll();
 
 $pageTitle = 'Dashboard';
 $activeNav = 'dashboard';
@@ -19,16 +26,16 @@ include __DIR__ . '/_layout.php';
 
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="val" style="color:#3b82f6"><?= $totalClients ?></div>
-    <div class="lbl">Total Clients</div>
+    <div class="val" style="color:#3b82f6"><?= $totalCustomers ?></div>
+    <div class="lbl">Total Customers</div>
   </div>
   <div class="stat-card">
-    <div class="val" style="color:#22c55e"><?= $activeClients ?></div>
-    <div class="lbl">Active Clients</div>
+    <div class="val" style="color:#22c55e"><?= $activeBusinessProfiles ?></div>
+    <div class="lbl">Active Business Profiles</div>
   </div>
   <div class="stat-card">
-    <div class="val" style="color:#f59e0b"><?= $totalCustomers ?></div>
-    <div class="lbl">Customers</div>
+    <div class="val" style="color:#f59e0b"><?= $totalBusinessProfiles ?></div>
+    <div class="lbl">Business Profiles</div>
   </div>
   <div class="stat-card">
     <div class="val" style="color:#22c55e"><?= $activeSubscriptions ?></div>
@@ -52,12 +59,12 @@ include __DIR__ . '/_layout.php';
 
 <div class="card">
   <div class="card-header">
-    <span class="card-title">Recent Clients</span>
-    <a class="btn btn-primary btn-sm" href="<?= APP_URL ?>/admin/clients.php?action=new">+ Add Client</a>
+    <span class="card-title">Recent Customers</span>
+    <a class="btn btn-primary btn-sm" href="<?= APP_URL ?>/admin/customers.php">+ Add Customer</a>
   </div>
 
-  <?php if (empty($recentClients)): ?>
-    <p style="color:var(--muted);text-align:center;padding:32px">No clients yet. <a href="<?= APP_URL ?>/admin/clients.php?action=new" style="color:var(--primary)">Add your first client →</a></p>
+  <?php if (empty($recentCustomers)): ?>
+    <p style="color:var(--muted);text-align:center;padding:32px">No customers yet. <a href="<?= APP_URL ?>/admin/customers.php" style="color:var(--primary)">Add your first customer</a></p>
   <?php else: ?>
   <table>
     <thead>
@@ -70,37 +77,44 @@ include __DIR__ . '/_layout.php';
       </tr>
     </thead>
     <tbody>
-      <?php foreach ($recentClients as $c): ?>
+      <?php foreach ($recentCustomers as $c): ?>
       <tr>
         <td>
           <div class="logo-preview">
             <?php if ($c['logo_path']): ?>
               <img src="<?= htmlspecialchars(UPLOAD_URL . $c['logo_path']) ?>" alt="">
             <?php else: ?>
-              <span style="font-size:1.5rem;color:var(--muted)"><?= strtoupper(substr($c['company_name'],0,1)) ?></span>
+              <span style="font-size:1.5rem;color:var(--muted)"><?= strtoupper(substr($c['name'],0,1)) ?></span>
             <?php endif; ?>
           </div>
         </td>
         <td>
-          <div style="font-weight:500"><?= htmlspecialchars($c['company_name']) ?></div>
-          <?php if ($c['tagline']): ?>
+          <div style="font-weight:500"><?= htmlspecialchars($c['name']) ?></div>
+          <div style="font-size:0.78rem;color:var(--muted)">+<?= htmlspecialchars($c['phone']) ?></div>
+          <?php if ($c['company_name']): ?>
+            <div style="font-size:0.78rem;color:var(--muted2);margin-top:4px"><?= htmlspecialchars($c['company_name']) ?></div>
+          <?php elseif ($c['tagline']): ?>
             <div style="font-size:0.78rem;color:var(--muted)"><?= htmlspecialchars($c['tagline']) ?></div>
           <?php endif; ?>
         </td>
         <td>
-          <span class="badge <?= $c['is_active'] ? 'badge-green' : 'badge-red' ?>">
-            <?= $c['is_active'] ? 'Active' : 'Inactive' ?>
+          <span class="badge <?= $c['business_active'] ? 'badge-green' : 'badge-red' ?>">
+            <?= $c['business_active'] ? 'Active' : 'No Business' ?>
           </span>
         </td>
         <td>
-          <div class="link-copy">
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= htmlspecialchars(APP_URL . '/review.php?c=' . $c['slug']) ?></span>
-            <button onclick="copyLink('<?= APP_URL . '/review.php?c=' . $c['slug'] ?>', this)" title="Copy link">📋</button>
-            <a href="<?= APP_URL . '/review.php?c=' . $c['slug'] ?>" target="_blank" style="color:var(--muted);text-decoration:none" title="Open">↗</a>
-          </div>
+          <?php if ($c['slug']): ?>
+            <div class="link-copy">
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= htmlspecialchars(APP_URL . '/review.php?c=' . $c['slug']) ?></span>
+              <button onclick="copyLink('<?= APP_URL . '/review.php?c=' . $c['slug'] ?>', this)" title="Copy link">📋</button>
+              <a href="<?= APP_URL . '/review.php?c=' . $c['slug'] ?>" target="_blank" style="color:var(--muted);text-decoration:none" title="Open">↗</a>
+            </div>
+          <?php else: ?>
+            <span style="color:var(--muted)">Not added</span>
+          <?php endif; ?>
         </td>
         <td>
-          <a class="btn btn-ghost btn-sm" href="<?= APP_URL ?>/admin/clients.php?action=edit&id=<?= $c['id'] ?>">Edit</a>
+          <a class="btn btn-ghost btn-sm" href="<?= APP_URL ?>/admin/customers.php?action=business&id=<?= $c['id'] ?>">Business Profile</a>
         </td>
       </tr>
       <?php endforeach; ?>
