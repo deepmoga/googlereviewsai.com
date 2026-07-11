@@ -219,6 +219,7 @@
     input[type=email],
     input[type=number],
     input[type=date],
+    input[type=datetime-local],
     select,
     textarea {
       background: #0f172a;

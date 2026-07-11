@@ -183,6 +183,65 @@ function customerPlanExpiresAt($customerId) {
     return $subscription ? $subscription['expires_at'] : null;
 }
 
+function saveManualCustomerAccess($customerId, $planId, $expiresInput, $isActive, $phoneVerified) {
+    $db = getDB();
+    $customerId = intval($customerId);
+    $planId = intval($planId);
+    $isActive = $isActive ? 1 : 0;
+    $verifiedAt = $phoneVerified ? date('Y-m-d H:i:s') : null;
+
+    $customerStmt = $db->prepare("SELECT id FROM customers WHERE id = ?");
+    $customerStmt->execute([$customerId]);
+    if (!$customerStmt->fetch()) {
+        throw new RuntimeException('Customer not found.');
+    }
+
+    $plan = null;
+    $expiresAt = null;
+    if ($planId > 0) {
+        $planStmt = $db->prepare("SELECT * FROM plans WHERE id = ?");
+        $planStmt->execute([$planId]);
+        $plan = $planStmt->fetch();
+        if (!$plan) {
+            throw new RuntimeException('Selected plan was not found.');
+        }
+
+        $expiresInput = trim((string) $expiresInput);
+        if ($expiresInput !== '') {
+            $expiryTime = strtotime($expiresInput);
+            if (!$expiryTime) {
+                throw new RuntimeException('Please enter a valid expiry date.');
+            }
+        } else {
+            $expiryTime = time() + (intval($plan['duration_days']) * 86400);
+        }
+
+        if ($expiryTime <= time()) {
+            throw new RuntimeException('Expiry date must be in the future to activate the plan.');
+        }
+        $expiresAt = date('Y-m-d H:i:s', $expiryTime);
+    }
+
+    $db->prepare("UPDATE customers SET is_active = ?, phone_verified_at = ? WHERE id = ?")
+        ->execute([$isActive, $verifiedAt, $customerId]);
+
+    $db->prepare("UPDATE customer_subscriptions SET status = 'expired' WHERE customer_id = ? AND status = 'active'")
+        ->execute([$customerId]);
+
+    if ($plan) {
+        $db->prepare("INSERT INTO customer_subscriptions (customer_id, plan_id, order_id, starts_at, expires_at, amount, status, created_at)
+            VALUES (?, ?, NULL, NOW(), ?, ?, 'active', NOW())")
+            ->execute([$customerId, $plan['id'], $expiresAt, $plan['price']]);
+        $db->prepare("UPDATE clients SET link_expire_at = ?, is_active = 1 WHERE customer_id = ?")
+            ->execute([$expiresAt, $customerId]);
+    } else {
+        $db->prepare("UPDATE clients SET link_expire_at = NULL WHERE customer_id = ?")
+            ->execute([$customerId]);
+    }
+
+    return $expiresAt;
+}
+
 function clientHasActiveSubscription($client) {
     if (empty($client['customer_id'])) {
         return false;

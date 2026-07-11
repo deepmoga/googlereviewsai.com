@@ -7,6 +7,8 @@ $action = $_GET['action'] ?? 'list';
 $clientId = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $msg = '';
 $msgType = 'success';
+$plans = $db->query("SELECT * FROM plans ORDER BY is_active DESC, price ASC, id ASC")->fetchAll();
+$customersForSelect = $db->query("SELECT id, name, phone, email, is_active, phone_verified_at FROM customers ORDER BY name ASC, phone ASC")->fetchAll();
 
 // ---- DELETE ----
 if ($action === 'delete' && $clientId) {
@@ -42,6 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $linkExpireAt = trim($_POST['link_expire_at'] ?? '');
   $linkExpireAt = $linkExpireAt !== '' ? $linkExpireAt : null;
   $isActive = isset($_POST['is_active']) ? 1 : 0;
+  $customerId = intval($_POST['customer_id'] ?? 0);
+  $accessPlanId = intval($_POST['access_plan_id'] ?? 0);
+  $accessExpiresAt = trim($_POST['access_expires_at'] ?? '');
+  $customerIsActive = isset($_POST['customer_is_active']) ? 1 : 0;
+  $customerPhoneVerified = isset($_POST['customer_phone_verified']) ? 1 : 0;
   $editId = intval($_POST['edit_id'] ?? 0);
 
   if ($placeId === '') {
@@ -75,6 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($msg)) {
+      $db->beginTransaction();
+      try {
       if ($editId) {
         // Update existing
         $existing = $db->prepare("SELECT logo_path FROM clients WHERE id = ?");
@@ -87,11 +96,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $logoUpdate = $logoPath ? ", logo_path = ?" : "";
-        $params = [$companyName, $tagline, $reviewLink, $placeId, $businessLocation, $instructions, $serviceOptions, $linkExpireAt, $isActive];
+        $params = [$customerId ?: null, $companyName, $tagline, $reviewLink, $placeId, $businessLocation, $instructions, $serviceOptions, $linkExpireAt, $isActive];
         if ($logoPath) $params[] = $logoPath;
         $params[] = $editId;
 
-        $db->prepare("UPDATE clients SET company_name=?, tagline=?, google_review_link=?, google_place_id=?, business_location=?, chatgpt_instructions=?, service_options=?, link_expire_at=?, is_active=?{$logoUpdate} WHERE id=?")->execute($params);
+        $db->prepare("UPDATE clients SET customer_id=?, company_name=?, tagline=?, google_review_link=?, google_place_id=?, business_location=?, chatgpt_instructions=?, service_options=?, link_expire_at=?, is_active=?{$logoUpdate} WHERE id=?")->execute($params);
         $msg = 'Client updated successfully!';
       } else {
         // Generate unique slug
@@ -102,12 +111,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $slug = $baseSlug . '-' . $i++;
         }
 
-        $db->prepare("INSERT INTO clients (company_name, tagline, slug, google_review_link, google_place_id, business_location, chatgpt_instructions, service_options, link_expire_at, logo_path, is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-          ->execute([$companyName, $tagline, $slug, $reviewLink, $placeId, $businessLocation, $instructions, $serviceOptions, $linkExpireAt, $logoPath, $isActive]);
+        $db->prepare("INSERT INTO clients (customer_id, company_name, tagline, slug, google_review_link, google_place_id, business_location, chatgpt_instructions, service_options, link_expire_at, logo_path, is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+          ->execute([$customerId ?: null, $companyName, $tagline, $slug, $reviewLink, $placeId, $businessLocation, $instructions, $serviceOptions, $linkExpireAt, $logoPath, $isActive]);
         $newId = $db->lastInsertId();
         $msg = 'Client created!';
         $action = 'edit';
         $clientId = $newId;
+      }
+
+      if ($customerId) {
+        $manualExpiresAt = saveManualCustomerAccess($customerId, $accessPlanId, $accessExpiresAt, $customerIsActive, $customerPhoneVerified);
+        if ($manualExpiresAt) {
+          $linkExpireAt = $manualExpiresAt;
+        }
+      }
+      $db->commit();
+      } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+          $db->rollBack();
+        }
+        $msg = $e->getMessage();
+        $msgType = 'error';
       }
     }
   }
@@ -120,14 +144,32 @@ if (isset($_GET['msg']) && $_GET['msg'] === 'deleted') {
 
 // Load client for edit
 $editClient = null;
+$linkedCustomer = null;
+$linkedSubscription = null;
 if (($action === 'edit' || $action === 'new') && $clientId) {
   $stmt = $db->prepare("SELECT * FROM clients WHERE id = ?");
   $stmt->execute([$clientId]);
   $editClient = $stmt->fetch();
+  if ($editClient && !empty($editClient['customer_id'])) {
+    $custStmt = $db->prepare("SELECT * FROM customers WHERE id = ?");
+    $custStmt->execute([$editClient['customer_id']]);
+    $linkedCustomer = $custStmt->fetch() ?: null;
+    $linkedSubscription = activeCustomerSubscription($editClient['customer_id']);
+  }
 }
 
 // List all clients
-$clients = $db->query("SELECT * FROM clients ORDER BY created_at DESC")->fetchAll();
+$clients = $db->query("SELECT cl.*, c.name AS customer_name, c.phone AS customer_phone,
+    s.expires_at, p.name AS plan_name
+  FROM clients cl
+  LEFT JOIN customers c ON c.id = cl.customer_id
+  LEFT JOIN customer_subscriptions s ON s.id = (
+    SELECT s2.id FROM customer_subscriptions s2
+    WHERE s2.customer_id = cl.customer_id AND s2.status = 'active' AND s2.expires_at >= NOW()
+    ORDER BY s2.expires_at DESC LIMIT 1
+  )
+  LEFT JOIN plans p ON p.id = s.plan_id
+  ORDER BY cl.created_at DESC")->fetchAll();
 
 $pageTitle = $action === 'list' ? 'Clients' : ($editClient ? 'Edit Client' : 'New Client');
 $activeNav = 'clients';
@@ -154,6 +196,8 @@ include __DIR__ . '/_layout.php';
           <tr>
             <th>Logo</th>
             <th>Company</th>
+            <th>Customer</th>
+            <th>Plan</th>
             <th>Slug</th>
             <th>Status</th>
             <th>Review Page</th>
@@ -176,6 +220,22 @@ include __DIR__ . '/_layout.php';
                 <div style="font-weight:500"><?= htmlspecialchars($c['company_name']) ?></div>
                 <?php if ($c['tagline']): ?>
                   <div style="font-size:0.78rem;color:var(--muted);margin-top:2px"><?= htmlspecialchars($c['tagline']) ?></div>
+                <?php endif; ?>
+              </td>
+              <td>
+                <?php if ($c['customer_name']): ?>
+                  <strong><?= htmlspecialchars($c['customer_name']) ?></strong><br>
+                  <span style="color:var(--muted);font-size:.78rem">+<?= htmlspecialchars($c['customer_phone']) ?></span>
+                <?php else: ?>
+                  <span style="color:var(--muted)">No login account</span>
+                <?php endif; ?>
+              </td>
+              <td>
+                <?php if ($c['expires_at']): ?>
+                  <span class="badge badge-green"><?= htmlspecialchars($c['plan_name']) ?></span><br>
+                  <span style="color:var(--muted);font-size:.78rem">Expires <?= date('d M Y', strtotime($c['expires_at'])) ?></span>
+                <?php else: ?>
+                  <span class="badge badge-red">No active plan</span>
                 <?php endif; ?>
               </td>
               <td><code style="font-size:0.8rem;color:var(--muted2)"><?= htmlspecialchars($c['slug']) ?></code></td>
@@ -295,7 +355,7 @@ include __DIR__ . '/_layout.php';
 
         <div class="form-group">
           <label>Link Expire Date &amp; Time</label>
-          <input type="date" name="link_expire_at" value="<?= !empty($editClient['link_expire_at']) ? date('Y-m-d\\TH:i', strtotime($editClient['link_expire_at'])) : '' ?>">
+          <input type="datetime-local" name="link_expire_at" value="<?= !empty($editClient['link_expire_at']) ? date('Y-m-d\\TH:i', strtotime($editClient['link_expire_at'])) : '' ?>">
           <small style="color:var(--muted);font-size:0.75rem;margin-top:4px">After this date, review page will show Plan Expired.</small>
         </div>
 
@@ -304,6 +364,53 @@ include __DIR__ . '/_layout.php';
           <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:0.875rem;cursor:pointer;padding-top:8px">
             <input type="checkbox" name="is_active" value="1" <?= (!$editClient || $editClient['is_active']) ? 'checked' : '' ?> style="width:auto;padding:0">
             Active (review page is publicly accessible)
+          </label>
+        </div>
+
+        <div class="form-group full" style="border-top:1px solid var(--border);padding-top:18px">
+          <label>Linked Customer Account</label>
+          <select name="customer_id">
+            <option value="">No customer login account</option>
+            <?php foreach ($customersForSelect as $customerOption): ?>
+              <option value="<?= intval($customerOption['id']) ?>" <?= intval($editClient['customer_id'] ?? 0) === intval($customerOption['id']) ? 'selected' : '' ?>>
+                <?= htmlspecialchars($customerOption['name']) ?> - +<?= htmlspecialchars($customerOption['phone']) ?><?= $customerOption['email'] ? ' - ' . htmlspecialchars($customerOption['email']) : '' ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <small style="color:var(--muted);font-size:0.75rem;margin-top:4px">Create the customer in Customers first, then link that account here.</small>
+        </div>
+
+        <div class="form-group">
+          <label>Manual Plan</label>
+          <select name="access_plan_id">
+            <option value="">No active plan</option>
+            <?php foreach ($plans as $plan): ?>
+              <option value="<?= intval($plan['id']) ?>" <?= intval($linkedSubscription['plan_id'] ?? 0) === intval($plan['id']) ? 'selected' : '' ?>>
+                <?= htmlspecialchars($plan['name']) ?> - &#8377;<?= number_format((float) $plan['price'], 0) ?><?= $plan['is_active'] ? '' : ' (inactive)' ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Plan Expiry</label>
+          <input type="datetime-local" name="access_expires_at" value="<?= !empty($linkedSubscription['expires_at']) ? date('Y-m-d\\TH:i', strtotime($linkedSubscription['expires_at'])) : '' ?>">
+          <small style="color:var(--muted);font-size:0.75rem;margin-top:4px">Leave blank to use the selected plan duration.</small>
+        </div>
+
+        <div class="form-group">
+          <label>Customer Status</label>
+          <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:0.875rem;cursor:pointer;padding-top:8px">
+            <input type="checkbox" name="customer_is_active" value="1" <?= (!$linkedCustomer || $linkedCustomer['is_active']) ? 'checked' : '' ?> style="width:auto;padding:0">
+            Customer active
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label>Customer Verification</label>
+          <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:0.875rem;cursor:pointer;padding-top:8px">
+            <input type="checkbox" name="customer_phone_verified" value="1" <?= (!$linkedCustomer || $linkedCustomer['phone_verified_at']) ? 'checked' : '' ?> style="width:auto;padding:0">
+            Mark OTP verified
           </label>
         </div>
       </div>
