@@ -34,6 +34,8 @@ if ($action === 'toggle' && $clientId) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $companyName = trim($_POST['company_name'] ?? '');
   $tagline = trim($_POST['tagline'] ?? '');
+  $businessLocation = trim($_POST['business_location'] ?? '');
+  $placeId = trim($_POST['google_place_id'] ?? '');
   $reviewLink = trim($_POST['google_review_link'] ?? '');
   $instructions = trim($_POST['chatgpt_instructions'] ?? '');
   $serviceOptions = trim($_POST['service_options'] ?? '');
@@ -42,8 +44,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $isActive = isset($_POST['is_active']) ? 1 : 0;
   $editId = intval($_POST['edit_id'] ?? 0);
 
+  if ($placeId === '') {
+    $placeId = parseGooglePlaceId($reviewLink);
+  }
+  if ($placeId !== '') {
+    $reviewLink = googleReviewLinkFromPlaceId($placeId);
+  }
+
   if (empty($companyName) || empty($reviewLink)) {
-    $msg = 'Company name and Google Review link are required.';
+    $msg = 'Company name and Google Review link are required. Use Place ID search or paste the link manually.';
     $msgType = 'error';
   } else {
     // Handle logo upload
@@ -78,11 +87,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $logoUpdate = $logoPath ? ", logo_path = ?" : "";
-        $params = [$companyName, $tagline, $reviewLink, $instructions, $serviceOptions, $linkExpireAt, $isActive];
+        $params = [$companyName, $tagline, $reviewLink, $placeId, $businessLocation, $instructions, $serviceOptions, $linkExpireAt, $isActive];
         if ($logoPath) $params[] = $logoPath;
         $params[] = $editId;
 
-        $db->prepare("UPDATE clients SET company_name=?, tagline=?, google_review_link=?, chatgpt_instructions=?, service_options=?, link_expire_at=?, is_active=?{$logoUpdate} WHERE id=?")->execute($params);
+        $db->prepare("UPDATE clients SET company_name=?, tagline=?, google_review_link=?, google_place_id=?, business_location=?, chatgpt_instructions=?, service_options=?, link_expire_at=?, is_active=?{$logoUpdate} WHERE id=?")->execute($params);
         $msg = 'Client updated successfully!';
       } else {
         // Generate unique slug
@@ -93,8 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $slug = $baseSlug . '-' . $i++;
         }
 
-        $db->prepare("INSERT INTO clients (company_name, tagline, slug, google_review_link, chatgpt_instructions, service_options, link_expire_at, logo_path, is_active) VALUES (?,?,?,?,?,?,?,?,?)")
-          ->execute([$companyName, $tagline, $slug, $reviewLink, $instructions, $serviceOptions, $linkExpireAt, $logoPath, $isActive]);
+        $db->prepare("INSERT INTO clients (company_name, tagline, slug, google_review_link, google_place_id, business_location, chatgpt_instructions, service_options, link_expire_at, logo_path, is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+          ->execute([$companyName, $tagline, $slug, $reviewLink, $placeId, $businessLocation, $instructions, $serviceOptions, $linkExpireAt, $logoPath, $isActive]);
         $newId = $db->lastInsertId();
         $msg = 'Client created!';
         $action = 'edit';
@@ -237,9 +246,26 @@ include __DIR__ . '/_layout.php';
         </div>
 
         <div class="form-group full">
+          <label>Find Google Place ID Automatically</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <input type="text" id="placeSearch" placeholder="Example: AI Google Reviews Moga" value="<?= htmlspecialchars($editClient['business_location'] ?? '') ?>" style="flex:1;min-width:260px">
+            <button class="btn btn-light" type="button" onclick="findPlace()">Find Place ID</button>
+          </div>
+          <small style="color:var(--muted);font-size:0.75rem;margin-top:4px">Search by business name with city. The selected Place ID will auto-fill the Google Review link.</small>
+          <div id="placeResults" style="margin-top:10px"></div>
+        </div>
+
+        <input type="hidden" name="google_place_id" id="googlePlaceId" value="<?= htmlspecialchars($editClient['google_place_id'] ?? '') ?>">
+
+        <div class="form-group full">
+          <label>Business Location / Search Text</label>
+          <input type="text" name="business_location" id="businessLocation" value="<?= htmlspecialchars($editClient['business_location'] ?? '') ?>" placeholder="Business name, city, address">
+        </div>
+
+        <div class="form-group full">
           <label>Google Review Link *</label>
-          <input type="url" name="google_review_link" required value="<?= htmlspecialchars($editClient['google_review_link'] ?? '') ?>" placeholder="https://g.page/r/...">
-          <small style="color:var(--muted);font-size:0.75rem;margin-top:4px">Find this in your Google Business Profile → Get more reviews</small>
+          <input type="text" name="google_review_link" id="googleReviewLink" required value="<?= htmlspecialchars($editClient['google_review_link'] ?? '') ?>" placeholder="https://search.google.com/local/writereview?placeid=...">
+          <small style="color:var(--muted);font-size:0.75rem;margin-top:4px">Use Place ID search above, paste a Google Review link, or paste a raw Place ID.</small>
         </div>
 
         <div class="form-group full">
@@ -318,6 +344,47 @@ include __DIR__ . '/_layout.php';
 
 <script>
   let currentQrUrl = '';
+
+  async function findPlace() {
+    const q = document.getElementById('placeSearch').value.trim();
+    const out = document.getElementById('placeResults');
+    if (q.length < 3) {
+      out.innerHTML = '<div class="alert alert-error">Enter business name with city.</div>';
+      return;
+    }
+
+    out.innerHTML = '<div class="alert alert-info">Searching Google Place ID...</div>';
+    try {
+      const res = await fetch('<?= APP_URL ?>/api/place-lookup.php?q=' + encodeURIComponent(q));
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || 'No place found.');
+      }
+
+      out.innerHTML = data.places.map((p) => `
+        <div style="border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:8px;background:#fff">
+          <strong>${escapeHtml(p.name)}</strong>
+          <div style="color:var(--muted);font-size:.88rem;margin:4px 0">${escapeHtml(p.address || '')}</div>
+          <button class="btn btn-light btn-sm" type="button" onclick='selectPlace(${JSON.stringify(p)})'>Use this Google Review link</button>
+        </div>
+      `).join('');
+    } catch (err) {
+      out.innerHTML = '<div class="alert alert-error">' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  function selectPlace(place) {
+    document.getElementById('googlePlaceId').value = place.place_id;
+    document.getElementById('googleReviewLink').value = place.review_link;
+    document.getElementById('businessLocation').value = [place.name, place.address].filter(Boolean).join(', ');
+    document.getElementById('placeResults').innerHTML = '<div class="alert alert-success">Google Review link selected.</div>';
+  }
+
+  function escapeHtml(value) {
+    const d = document.createElement('div');
+    d.appendChild(document.createTextNode(value || ''));
+    return d.innerHTML;
+  }
 
   function showQR(name, url) {
     currentQrUrl = url;
