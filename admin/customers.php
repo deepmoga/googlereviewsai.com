@@ -6,7 +6,7 @@ $db = getDB();
 $action = $_GET['action'] ?? 'list';
 $customerId = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $saved = $_GET['saved'] ?? '';
-$msg = $saved === 'access' ? 'Customer access updated successfully.' : ($saved === 'created' ? 'Customer account created successfully.' : ($saved === 'business' ? 'Business profile saved successfully.' : ''));
+$msg = $saved === 'access' ? 'Customer access updated successfully.' : ($saved === 'created' ? 'Customer account created successfully.' : ($saved === 'business' ? 'Business profile saved successfully.' : ($saved === 'deleted' ? 'Customer deleted successfully.' : ($saved === 'business_deleted' ? 'Business profile deleted successfully.' : ''))));
 $error = '';
 
 $plans = $db->query("SELECT * FROM plans ORDER BY is_active DESC, price ASC, id ASC")->fetchAll();
@@ -85,6 +85,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         if ($db->inTransaction()) {
             $db->rollBack();
         }
+        $error = $e->getMessage();
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_customer') {
+    $deleteCustomerId = intval($_POST['customer_id'] ?? 0);
+
+    try {
+        $customerStmt = $db->prepare("SELECT id FROM customers WHERE id = ?");
+        $customerStmt->execute([$deleteCustomerId]);
+        if (!$customerStmt->fetch()) {
+            throw new RuntimeException('Customer not found.');
+        }
+
+        $businessStmt = $db->prepare("SELECT logo_path FROM clients WHERE customer_id = ?");
+        $businessStmt->execute([$deleteCustomerId]);
+        $businesses = $businessStmt->fetchAll();
+
+        $db->beginTransaction();
+        $db->prepare("DELETE FROM clients WHERE customer_id = ?")->execute([$deleteCustomerId]);
+        $db->prepare("DELETE FROM customers WHERE id = ?")->execute([$deleteCustomerId]);
+        $db->commit();
+
+        foreach ($businesses as $business) {
+            if (!empty($business['logo_path']) && file_exists(UPLOAD_DIR . $business['logo_path'])) {
+                @unlink(UPLOAD_DIR . $business['logo_path']);
+            }
+        }
+
+        header('Location: ' . APP_URL . '/admin/customers.php?saved=deleted');
+        exit;
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        $error = $e->getMessage();
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_business') {
+    $deleteCustomerId = intval($_POST['customer_id'] ?? 0);
+    $businessId = intval($_POST['business_id'] ?? 0);
+
+    try {
+        $businessStmt = $db->prepare("SELECT * FROM clients WHERE id = ? AND customer_id = ?");
+        $businessStmt->execute([$businessId, $deleteCustomerId]);
+        $business = $businessStmt->fetch();
+        if (!$business) {
+            throw new RuntimeException('Business profile not found.');
+        }
+
+        $db->prepare("DELETE FROM clients WHERE id = ? AND customer_id = ?")->execute([$businessId, $deleteCustomerId]);
+        if (!empty($business['logo_path']) && file_exists(UPLOAD_DIR . $business['logo_path'])) {
+            @unlink(UPLOAD_DIR . $business['logo_path']);
+        }
+
+        header('Location: ' . APP_URL . '/admin/customers.php?saved=business_deleted');
+        exit;
+    } catch (Throwable $e) {
         $error = $e->getMessage();
     }
 }
@@ -333,6 +392,15 @@ include __DIR__ . '/_layout.php';
         <?php endif; ?>
       </div>
     </form>
+
+    <?php if ($selectedBusiness): ?>
+      <form method="post" style="margin-top:14px" onsubmit="return confirm('Delete this business profile? The customer account and plan will remain.');">
+        <input type="hidden" name="action" value="delete_business">
+        <input type="hidden" name="customer_id" value="<?= intval($selectedCustomer['id']) ?>">
+        <input type="hidden" name="business_id" value="<?= intval($selectedBusiness['id']) ?>">
+        <button class="btn btn-danger" type="submit">Delete Business Profile</button>
+      </form>
+    <?php endif; ?>
   </div>
 
   <script>
@@ -504,6 +572,11 @@ include __DIR__ . '/_layout.php';
               </select>
               <input type="datetime-local" name="expires_at" value="<?= !empty($c['expires_at']) ? date('Y-m-d\\TH:i', strtotime($c['expires_at'])) : '' ?>">
               <button class="btn btn-primary btn-sm" type="submit">Save Access</button>
+            </form>
+            <form method="post" style="margin-top:10px" onsubmit="return confirm('Delete this customer account and business profile? This cannot be undone.');">
+              <input type="hidden" name="action" value="delete_customer">
+              <input type="hidden" name="customer_id" value="<?= intval($c['id']) ?>">
+              <button class="btn btn-danger btn-sm" type="submit">Delete Customer</button>
             </form>
           </td>
         </tr>

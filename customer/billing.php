@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../config.php';
 $customer = requireCustomerLogin();
 $db = getDB();
-$plans = $db->query("SELECT * FROM plans WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
+$plans = $db->query("SELECT * FROM plans WHERE is_active = 1 AND price > 0 ORDER BY price ASC")->fetchAll();
 $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
 $ordersStmt = $db->prepare("SELECT * FROM payment_orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20");
 $ordersStmt->execute([$customer['id']]);

@@ -10,6 +10,7 @@ $db = getDB();
 $plans = $db->query("SELECT * FROM plans WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
 $addons = $db->query("SELECT * FROM addons WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
 $rzpKey = getSetting('razorpay_key_id') ?: '';
+$otpEnabled = registrationOtpEnabled();
 $requestedPlanId = intval($_GET['plan'] ?? 0);
 $planIds = array_map(function ($plan) {
     return (int) $plan['id'];
@@ -88,7 +89,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
           <div class="summary-row total"><span>Total today</span><strong id="summaryTotal">₹0</strong></div>
         </div>
 
-        <button class="btn" id="sendOtpButton" type="submit" <?= (!$plans) ? 'disabled' : '' ?>>Send OTP</button>
+        <button class="btn" id="sendOtpButton" type="submit" <?= (!$plans) ? 'disabled' : '' ?>><?= $otpEnabled ? 'Send OTP' : 'Continue' ?></button>
       </form>
 
       <div class="otp-panel" id="otpPanel">
@@ -154,6 +155,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
   const RAZORPAY_KEY = <?= json_encode($rzpKey) ?>;
+  const REGISTRATION_OTP_ENABLED = <?= json_encode($otpEnabled) ?>;
   const form = document.getElementById('registerForm');
   const message = document.getElementById('message');
   const sendOtpButton = document.getElementById('sendOtpButton');
@@ -201,6 +203,9 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
     document.getElementById('summaryAddons').textContent = formatInr(addonAmount);
     document.getElementById('summaryTotal').textContent = formatInr(selectedTotalAmount);
     verifyOtpButton.textContent = selectedTotalAmount > 0 ? 'Verify OTP & Pay' : 'Verify OTP & Start Trial';
+    if (!pendingRegistrationId) {
+      sendOtpButton.textContent = registrationButtonLabel();
+    }
   }
 
   document.querySelectorAll('[data-plan-card] input,[data-addon-card] input').forEach(input => {
@@ -227,6 +232,13 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
     document.querySelectorAll('[data-plan-card] input,[data-addon-card] input').forEach(input => {
       input.disabled = locked;
     });
+  }
+
+  function registrationButtonLabel() {
+    if (REGISTRATION_OTP_ENABLED) {
+      return 'Send OTP';
+    }
+    return selectedTotalAmount > 0 ? 'Continue to Payment' : 'Start Free Trial';
   }
 
   function openPayment(data) {
@@ -306,7 +318,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
     }
 
     sendOtpButton.disabled = true;
-    sendOtpButton.textContent = 'Sending OTP...';
+    sendOtpButton.textContent = REGISTRATION_OTP_ENABLED ? 'Sending OTP...' : (selectedTotalAmount > 0 ? 'Preparing payment...' : 'Starting trial...');
 
     try {
       const res = await fetch('<?= APP_URL ?>/customer/create-registration-order.php', { method: 'POST', body: new FormData(form) });
@@ -314,7 +326,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
       if (!data.success) {
         showError(data.message || 'Could not start registration.');
         sendOtpButton.disabled = false;
-        sendOtpButton.textContent = 'Send OTP';
+        sendOtpButton.textContent = registrationButtonLabel();
         return;
       }
 
@@ -337,9 +349,9 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
       otpInput.focus();
       showSuccess(data.message || 'OTP sent to WhatsApp. Verify OTP to continue to payment.');
     } catch (error) {
-      showError('OTP could not be sent. Please try again.');
+      showError(REGISTRATION_OTP_ENABLED ? 'OTP could not be sent. Please try again.' : 'Registration could not start. Please try again.');
       sendOtpButton.disabled = false;
-      sendOtpButton.textContent = 'Send OTP';
+      sendOtpButton.textContent = registrationButtonLabel();
     }
   });
 
