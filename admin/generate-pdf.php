@@ -121,11 +121,12 @@ foreach ($googleLetters as $i => $letter) {
 
 // ------ 5. Appreciation text
 $pdf->SetTextColor(255, 255, 255);
-$pdf->SetFont('helvetica', '', 12);
-$pdf->SetXY(15, 200);
-$pdf->Cell(180, 8, 'Your reviews are greatly appreciated!', 0, 1, 'C');
-$pdf->SetXY(15, 209);
-$pdf->Cell(180, 8, 'We hope you enjoyed your visit.', 0, 1, 'C');
+$pdf->SetFont('helvetica', 'B', 16);
+$pdf->SetXY(15, 198);
+$pdf->Cell(180, 9, 'Your reviews are greatly appreciated!', 0, 1, 'C');
+$pdf->SetFont('helvetica', '', 15);
+$pdf->SetXY(15, 208);
+$pdf->Cell(180, 9, 'We hope you enjoyed your visit.', 0, 1, 'C');
 
 // ------ 6. Five gold stars  ★★★★★
 $pdf->SetTextColor(251, 188, 5);  // gold

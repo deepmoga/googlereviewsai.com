@@ -135,6 +135,10 @@ function isValidIndianPhone($phone) {
     return (bool) preg_match('/^91[6-9]\d{9}$/', normalizeIndianPhone($phone));
 }
 
+function registrationOtpEnabled() {
+    return (getSetting('registration_otp_enabled') ?? '1') !== '0';
+}
+
 function isCustomerLoggedIn() {
     return isset($_SESSION['customer_id']) && intval($_SESSION['customer_id']) > 0;
 }

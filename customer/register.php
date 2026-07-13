@@ -95,6 +95,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
         <label>WhatsApp OTP *</label>
         <input class="otp-input" type="text" id="otpInput" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="000000">
         <button class="btn" id="verifyOtpButton" type="button">Verify OTP & Pay</button>
+        <button class="btn" id="resendOtpButton" type="button" style="background:#fff;color:var(--primary);border:1px solid var(--line)">Resend OTP</button>
       </div>
 
       <div id="message"></div>
@@ -159,6 +160,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
   const otpPanel = document.getElementById('otpPanel');
   const otpInput = document.getElementById('otpInput');
   const verifyOtpButton = document.getElementById('verifyOtpButton');
+  const resendOtpButton = document.getElementById('resendOtpButton');
   let pendingRegistrationId = 0;
   let selectedTotalAmount = 0;
 
@@ -227,6 +229,62 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
     });
   }
 
+  function openPayment(data) {
+    if (!RAZORPAY_KEY) {
+      showError('Razorpay keys are not configured. Please contact admin.');
+      verifyOtpButton.disabled = false;
+      verifyOtpButton.textContent = 'Verify OTP & Pay';
+      return;
+    }
+
+    verifyOtpButton.textContent = 'Opening payment...';
+    const options = {
+      key: RAZORPAY_KEY,
+      amount: data.amount,
+      currency: 'INR',
+      name: 'AI Google Reviews',
+      description: data.description,
+      order_id: data.razorpay_order_id,
+      prefill: {
+        name: form.elements['name'].value,
+        email: form.elements['email'].value,
+        contact: form.elements['phone'].value
+      },
+      modal: {
+        ondismiss: function () {
+          verifyOtpButton.disabled = false;
+          verifyOtpButton.textContent = 'Verify OTP & Pay';
+          if (!otpPanel.classList.contains('active')) {
+            sendOtpButton.disabled = false;
+            sendOtpButton.textContent = 'Continue Payment';
+          }
+        }
+      },
+      handler: async function (response) {
+        verifyOtpButton.textContent = 'Verifying payment...';
+        const verify = new FormData();
+        verify.append('pending_registration_id', data.pending_registration_id);
+        verify.append('razorpay_order_id', response.razorpay_order_id);
+        verify.append('razorpay_payment_id', response.razorpay_payment_id);
+        verify.append('razorpay_signature', response.razorpay_signature);
+        const vr = await fetch('<?= APP_URL ?>/customer/verify-registration-payment.php', { method: 'POST', body: verify });
+        const result = await vr.json();
+        if (result.success) {
+          window.location.href = result.redirect;
+        } else {
+          showError(result.message || 'Payment verification failed.');
+          verifyOtpButton.disabled = false;
+          verifyOtpButton.textContent = 'Verify OTP & Pay';
+          if (!otpPanel.classList.contains('active')) {
+            sendOtpButton.disabled = false;
+            sendOtpButton.textContent = 'Continue Payment';
+          }
+        }
+      }
+    };
+    new Razorpay(options).open();
+  }
+
   form.elements['phone'].addEventListener('input', function () {
     this.value = this.value.replace(/\D+/g, '').slice(0, 10);
   });
@@ -261,6 +319,18 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
       }
 
       pendingRegistrationId = data.pending_registration_id;
+      if (!data.requires_otp) {
+        if (!data.requires_payment) {
+          window.location.href = data.redirect;
+          return;
+        }
+        setRegistrationLocked(true);
+        sendOtpButton.textContent = 'Continue Payment';
+        verifyOtpButton.disabled = true;
+        openPayment(data);
+        return;
+      }
+
       setRegistrationLocked(true);
       sendOtpButton.textContent = 'OTP Sent';
       otpPanel.classList.add('active');
@@ -304,56 +374,41 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
         window.location.href = data.redirect;
         return;
       }
-      if (!RAZORPAY_KEY) {
-        showError('Razorpay keys are not configured. Please contact admin.');
-        verifyOtpButton.disabled = false;
-        verifyOtpButton.textContent = 'Verify OTP & Pay';
-        return;
-      }
 
-      verifyOtpButton.textContent = 'Opening payment...';
-      const options = {
-        key: RAZORPAY_KEY,
-        amount: data.amount,
-        currency: 'INR',
-        name: 'AI Google Reviews',
-        description: data.description,
-        order_id: data.razorpay_order_id,
-        prefill: {
-          name: form.elements['name'].value,
-          email: form.elements['email'].value,
-          contact: form.elements['phone'].value
-        },
-        modal: {
-          ondismiss: function () {
-            verifyOtpButton.disabled = false;
-            verifyOtpButton.textContent = 'Verify OTP & Pay';
-          }
-        },
-        handler: async function (response) {
-          verifyOtpButton.textContent = 'Verifying payment...';
-          const verify = new FormData();
-          verify.append('pending_registration_id', data.pending_registration_id);
-          verify.append('razorpay_order_id', response.razorpay_order_id);
-          verify.append('razorpay_payment_id', response.razorpay_payment_id);
-          verify.append('razorpay_signature', response.razorpay_signature);
-          const vr = await fetch('<?= APP_URL ?>/customer/verify-registration-payment.php', { method: 'POST', body: verify });
-          const result = await vr.json();
-          if (result.success) {
-            window.location.href = result.redirect;
-          } else {
-            showError(result.message || 'Payment verification failed.');
-            verifyOtpButton.disabled = false;
-            verifyOtpButton.textContent = 'Verify OTP & Pay';
-          }
-        }
-      };
-      new Razorpay(options).open();
+      openPayment(data);
     } catch (error) {
       showError('Checkout could not start. Please try again.');
       verifyOtpButton.disabled = false;
       verifyOtpButton.textContent = 'Verify OTP & Pay';
     }
+  });
+
+  resendOtpButton.addEventListener('click', async function () {
+    message.innerHTML = '';
+    if (!pendingRegistrationId) {
+      showError('Please send OTP first.');
+      return;
+    }
+
+    resendOtpButton.disabled = true;
+    resendOtpButton.textContent = 'Resending...';
+    try {
+      const body = new FormData();
+      body.append('pending_registration_id', pendingRegistrationId);
+      const res = await fetch('<?= APP_URL ?>/customer/resend-registration-otp.php', { method: 'POST', body });
+      const data = await res.json();
+      if (data.success) {
+        otpInput.value = '';
+        otpInput.focus();
+        showSuccess(data.message || 'A new OTP has been sent.');
+      } else {
+        showError(data.message || 'Could not resend OTP.');
+      }
+    } catch (error) {
+      showError('Could not resend OTP. Please try again.');
+    }
+    resendOtpButton.disabled = false;
+    resendOtpButton.textContent = 'Resend OTP';
   });
   </script>
 </body>

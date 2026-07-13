@@ -206,6 +206,7 @@ INSERT IGNORE INTO settings (setting_key, setting_value) VALUES
   ('whatsapp_api_token', ''),
   ('whatsapp_otp_template', 'test_demo'),
   ('whatsapp_otp_language', 'en_US'),
+  ('registration_otp_enabled', '1'),
   ('razorpay_key_id', ''),
   ('razorpay_key_secret', ''),
   ('google_maps_api_key', '');

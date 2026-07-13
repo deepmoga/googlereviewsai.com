@@ -18,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $whatsappToken = trim($_POST['whatsapp_api_token'] ?? '');
     $whatsappTemplate = trim($_POST['whatsapp_otp_template'] ?? 'test_demo');
     $whatsappLanguage = trim($_POST['whatsapp_otp_language'] ?? 'en_US');
+    $registrationOtpEnabled = isset($_POST['registration_otp_enabled']) ? '1' : '0';
     $razorpayKeyId = trim($_POST['razorpay_key_id'] ?? '');
     $razorpayKeySecret = trim($_POST['razorpay_key_secret'] ?? '');
     $googleMapsApiKey = trim($_POST['google_maps_api_key'] ?? '');
@@ -38,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'whatsapp_api_token' => $whatsappToken,
         'whatsapp_otp_template' => $whatsappTemplate ?: 'test_demo',
         'whatsapp_otp_language' => $whatsappLanguage ?: 'en_US',
+        'registration_otp_enabled' => $registrationOtpEnabled,
         'razorpay_key_id' => $razorpayKeyId,
         'razorpay_key_secret' => $razorpayKeySecret,
         'google_maps_api_key' => $googleMapsApiKey
@@ -170,6 +172,15 @@ include __DIR__ . '/_layout.php';
         <label>WhatsApp OTP Language</label>
         <input type="text" name="whatsapp_otp_language"
                value="<?= htmlspecialchars(getSetting('whatsapp_otp_language') ?: 'en_US') ?>">
+      </div>
+
+      <div class="form-group">
+        <label>Registration OTP Verification</label>
+        <label style="text-transform:none;letter-spacing:0">
+          <input type="checkbox" name="registration_otp_enabled" value="1" <?= registrationOtpEnabled() ? 'checked' : '' ?> style="width:auto">
+          Enable OTP before registration/payment
+        </label>
+        <small style="color:var(--muted);font-size:0.75rem;margin-top:4px">If disabled, customers skip OTP. Free trial accounts are created directly, and paid plans go straight to payment.</small>
       </div>
 
       <hr style="border:0;border-top:1px solid var(--border);width:100%;margin:6px 0">

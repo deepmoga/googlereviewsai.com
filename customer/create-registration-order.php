@@ -12,6 +12,7 @@ $password = $_POST['password'] ?? '';
 $confirm = $_POST['confirm_password'] ?? '';
 $planId = intval($_POST['plan_id'] ?? 0);
 $addonIds = array_values(array_unique(array_filter(array_map('intval', $_POST['addons'] ?? []))));
+$otpEnabled = registrationOtpEnabled();
 
 if ($name === '' || strlen($name) < 2 || strlen($name) > 150) {
     echo json_encode(['success' => false, 'message' => 'Please enter your full name.']);
@@ -95,8 +96,8 @@ try {
         ->execute([$phone, $email, $email]);
 
     $db->prepare("INSERT INTO pending_registrations
-        (name, phone, email, password_hash, plan_id, addon_ids, plan_amount, addon_amount, total_amount, otp_hash, otp_expires_at, otp_attempts, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), 0, 'created', NOW())")
+        (name, phone, email, password_hash, plan_id, addon_ids, plan_amount, addon_amount, total_amount, otp_hash, otp_expires_at, otp_attempts, otp_verified_at, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), 0, ?, 'created', NOW())")
         ->execute([
             $name,
             $phone,
@@ -107,15 +108,68 @@ try {
             $planAmount,
             $addonAmount,
             $totalAmount,
-            $otpHash
+            $otpEnabled ? $otpHash : null,
+            $otpEnabled ? null : date('Y-m-d H:i:s')
         ]);
     $pendingId = (int) $db->lastInsertId();
+
+    if (!$otpEnabled && $totalAmount <= 0) {
+        $db->prepare("INSERT INTO customers (name, phone, email, password_hash, phone_verified_at, is_active, created_at)
+            VALUES (?, ?, ?, ?, NOW(), 1, NOW())")
+            ->execute([$name, $phone, $email !== '' ? $email : null, password_hash($password, PASSWORD_DEFAULT)]);
+        $customerId = (int) $db->lastInsertId();
+
+        $startsAt = date('Y-m-d H:i:s');
+        $expiresAt = date('Y-m-d H:i:s', time() + intval($plan['duration_days']) * 86400);
+        $db->prepare("INSERT INTO customer_subscriptions (customer_id, plan_id, order_id, starts_at, expires_at, amount, status, created_at)
+            VALUES (?, ?, NULL, ?, ?, 0, 'active', NOW())")
+            ->execute([$customerId, $plan['id'], $startsAt, $expiresAt]);
+        $db->prepare("UPDATE pending_registrations SET status = 'paid', customer_id = ?, paid_at = NOW() WHERE id = ?")
+            ->execute([$customerId, $pendingId]);
+        $_SESSION['customer_id'] = $customerId;
+        $db->commit();
+
+        echo json_encode([
+            'success' => true,
+            'requires_otp' => false,
+            'requires_payment' => false,
+            'redirect' => APP_URL . '/customer/dashboard.php',
+            'message' => 'Free trial account created.'
+        ]);
+        exit;
+    }
+
+    $paymentOrder = null;
+    if (!$otpEnabled && $totalAmount > 0) {
+        $receipt = 'reg_' . $pendingId . '_' . time();
+        $paymentOrder = razorpayCreateOrder((int) round($totalAmount * 100), $receipt);
+        if (!$paymentOrder['success']) {
+            throw new RuntimeException($paymentOrder['message']);
+        }
+        $db->prepare("UPDATE pending_registrations SET razorpay_order_id = ? WHERE id = ?")
+            ->execute([$paymentOrder['data']['id'], $pendingId]);
+    }
+
     $db->commit();
 } catch (Throwable $e) {
     if ($db->inTransaction()) {
         $db->rollBack();
     }
-    echo json_encode(['success' => false, 'message' => 'Could not start registration. Please try again.']);
+    echo json_encode(['success' => false, 'message' => $e->getMessage() ?: 'Could not start registration. Please try again.']);
+    exit;
+}
+
+if (!$otpEnabled && $totalAmount > 0) {
+    echo json_encode([
+        'success' => true,
+        'pending_registration_id' => $pendingId,
+        'requires_otp' => false,
+        'requires_payment' => true,
+        'razorpay_order_id' => $paymentOrder['data']['id'],
+        'amount' => (int) $paymentOrder['data']['amount'],
+        'description' => 'AI Google Reviews - ' . $plan['name'],
+        'message' => 'Continue to payment.'
+    ]);
     exit;
 }
 
@@ -130,6 +184,7 @@ echo json_encode([
     'success' => true,
     'pending_registration_id' => $pendingId,
     'phone' => $phone,
+    'requires_otp' => true,
     'requires_payment' => $totalAmount > 0,
     'message' => $totalAmount > 0
         ? 'OTP sent to WhatsApp. Verify OTP to continue to payment.'
