@@ -70,12 +70,17 @@ if ($addonIds) {
 }
 
 $planAmount = (float) $plan['price'];
+if ($planAmount <= 0 && $addonIds) {
+    echo json_encode(['success' => false, 'message' => 'Addons can be purchased after your free trial is active.']);
+    exit;
+}
+
 $addonAmount = array_reduce($addons, function ($sum, $addon) {
     return $sum + (float) $addon['price'];
 }, 0.0);
 $totalAmount = $planAmount + $addonAmount;
 
-if ($totalAmount <= 0) {
+if ($totalAmount < 0) {
     echo json_encode(['success' => false, 'message' => 'Invalid payment amount.']);
     exit;
 }
@@ -125,5 +130,8 @@ echo json_encode([
     'success' => true,
     'pending_registration_id' => $pendingId,
     'phone' => $phone,
-    'message' => 'OTP sent to WhatsApp. Verify OTP to continue to payment.'
+    'requires_payment' => $totalAmount > 0,
+    'message' => $totalAmount > 0
+        ? 'OTP sent to WhatsApp. Verify OTP to continue to payment.'
+        : 'OTP sent to WhatsApp. Verify OTP to activate your free trial.'
 ]);

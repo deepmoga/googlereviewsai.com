@@ -88,7 +88,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
           <div class="summary-row total"><span>Total today</span><strong id="summaryTotal">₹0</strong></div>
         </div>
 
-        <button class="btn" id="sendOtpButton" type="submit" <?= (!$plans || $rzpKey === '') ? 'disabled' : '' ?>>Send OTP</button>
+        <button class="btn" id="sendOtpButton" type="submit" <?= (!$plans) ? 'disabled' : '' ?>>Send OTP</button>
       </form>
 
       <div class="otp-panel" id="otpPanel">
@@ -122,9 +122,9 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
                   <?php endforeach; ?>
                 </ul>
               </div>
-              <div class="price">₹<?= number_format((float) $plan['price'], 0) ?></div>
+              <div class="price"><?= (float) $plan['price'] <= 0 ? 'Free' : '₹' . number_format((float) $plan['price'], 0) ?></div>
             </div>
-            <span class="buy-badge">Buy this plan</span>
+            <span class="buy-badge"><?= (float) $plan['price'] <= 0 ? 'Start free trial' : 'Buy this plan' ?></span>
           </label>
         <?php endforeach; ?>
       </div>
@@ -160,6 +160,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
   const otpInput = document.getElementById('otpInput');
   const verifyOtpButton = document.getElementById('verifyOtpButton');
   let pendingRegistrationId = 0;
+  let selectedTotalAmount = 0;
 
   function formatInr(value) {
     return '₹' + Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -180,12 +181,24 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
 
     const plan = selectedPlanCard();
     const planAmount = plan ? Number(plan.dataset.price) : 0;
+    const isFreePlan = planAmount <= 0;
+    document.querySelectorAll('[data-addon-card] input').forEach(input => {
+      if (isFreePlan) {
+        input.checked = false;
+        input.closest('[data-addon-card]').classList.remove('active');
+      }
+      input.disabled = isFreePlan;
+      input.closest('[data-addon-card]').style.opacity = isFreePlan ? '.55' : '1';
+    });
+
     const addonAmount = Array.from(document.querySelectorAll('[data-addon-card] input:checked'))
       .reduce((sum, input) => sum + Number(input.closest('[data-addon-card]').dataset.price), 0);
+    selectedTotalAmount = planAmount + addonAmount;
 
     document.getElementById('summaryPlan').textContent = plan ? `${plan.dataset.name} - ${formatInr(planAmount)}` : '-';
     document.getElementById('summaryAddons').textContent = formatInr(addonAmount);
-    document.getElementById('summaryTotal').textContent = formatInr(planAmount + addonAmount);
+    document.getElementById('summaryTotal').textContent = formatInr(selectedTotalAmount);
+    verifyOtpButton.textContent = selectedTotalAmount > 0 ? 'Verify OTP & Pay' : 'Verify OTP & Start Trial';
   }
 
   document.querySelectorAll('[data-plan-card] input,[data-addon-card] input').forEach(input => {
@@ -226,10 +239,6 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
     event.preventDefault();
     message.innerHTML = '';
 
-    if (!RAZORPAY_KEY) {
-      showError('Razorpay keys are not configured. Please contact admin.');
-      return;
-    }
     if (!form.reportValidity()) {
       return;
     }
@@ -245,7 +254,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
       const res = await fetch('<?= APP_URL ?>/customer/create-registration-order.php', { method: 'POST', body: new FormData(form) });
       const data = await res.json();
       if (!data.success) {
-        showError(data.message || 'Could not create payment order.');
+        showError(data.message || 'Could not start registration.');
         sendOtpButton.disabled = false;
         sendOtpButton.textContent = 'Send OTP';
         return;
@@ -275,11 +284,6 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
       showError('Please enter the 6 digit OTP.');
       return;
     }
-    if (!RAZORPAY_KEY) {
-      showError('Razorpay keys are not configured. Please contact admin.');
-      return;
-    }
-
     verifyOtpButton.disabled = true;
     verifyOtpButton.textContent = 'Verifying OTP...';
 
@@ -291,6 +295,17 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
       const data = await otpRes.json();
       if (!data.success) {
         showError(data.message || 'OTP verification failed.');
+        verifyOtpButton.disabled = false;
+        verifyOtpButton.textContent = selectedTotalAmount > 0 ? 'Verify OTP & Pay' : 'Verify OTP & Start Trial';
+        return;
+      }
+
+      if (!data.requires_payment) {
+        window.location.href = data.redirect;
+        return;
+      }
+      if (!RAZORPAY_KEY) {
+        showError('Razorpay keys are not configured. Please contact admin.');
         verifyOtpButton.disabled = false;
         verifyOtpButton.textContent = 'Verify OTP & Pay';
         return;

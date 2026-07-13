@@ -179,7 +179,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
 INSERT IGNORE INTO plans (id, name, price, duration_days, description, is_active)
 VALUES
   (1, 'Monthly Plan', 1000.00, 30, 'One business profile|30 days access|AI Google Reviews dashboard|QR review page', 1),
-  (2, 'Yearly Plan', 10000.00, 365, 'One business profile|365 days access|AI Google Reviews dashboard|QR review page', 1);
+  (2, 'Yearly Plan', 10000.00, 365, 'One business profile|365 days access|AI Google Reviews dashboard|QR review page', 1),
+  (3, 'Free Trial', 0.00, 2, 'One business profile|2 days free access|No payment required|One trial per phone number', 1);
 
 UPDATE plans
 SET description = 'One business profile|30 days access|AI Google Reviews dashboard|QR review page'

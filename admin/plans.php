@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $description = trim($_POST['description'] ?? '');
     $isActive = isset($_POST['is_active']) ? 1 : 0;
 
-    if ($name === '' || $price <= 0) {
+    if ($name === '' || $price < 0) {
         $msg = 'Name and valid price are required.';
         $msgType = 'error';
     } elseif ($type === 'plan') {
