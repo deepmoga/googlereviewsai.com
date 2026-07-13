@@ -20,20 +20,19 @@ if (!verifyRazorpaySignature($razorpayOrderId, $paymentId, $signature)) {
 
 $db = getDB();
 $customerId = 0;
-$phone = '';
 
 $db->beginTransaction();
 try {
     $stmt = $db->prepare("SELECT pr.*, p.duration_days, p.name AS plan_name
         FROM pending_registrations pr
         INNER JOIN plans p ON p.id = pr.plan_id
-        WHERE pr.id = ? AND pr.status = 'created'
+        WHERE pr.id = ? AND pr.status = 'created' AND pr.otp_verified_at IS NOT NULL
         FOR UPDATE");
     $stmt->execute([$pendingId]);
     $pending = $stmt->fetch();
 
     if (!$pending || $pending['razorpay_order_id'] !== $razorpayOrderId) {
-        throw new RuntimeException('Invalid or already processed registration payment.');
+        throw new RuntimeException('Invalid, unverified, or already processed registration payment.');
     }
 
     $dupe = $db->prepare("SELECT id FROM customers WHERE phone = ? OR (email IS NOT NULL AND email != '' AND email = ?) LIMIT 1");
@@ -42,11 +41,10 @@ try {
         throw new RuntimeException('An account already exists with this phone or email.');
     }
 
-    $db->prepare("INSERT INTO customers (name, phone, email, password_hash, is_active, created_at)
-        VALUES (?, ?, ?, ?, 1, NOW())")
+    $db->prepare("INSERT INTO customers (name, phone, email, password_hash, phone_verified_at, is_active, created_at)
+        VALUES (?, ?, ?, ?, NOW(), 1, NOW())")
         ->execute([$pending['name'], $pending['phone'], $pending['email'], $pending['password_hash']]);
     $customerId = (int) $db->lastInsertId();
-    $phone = $pending['phone'];
 
     $db->prepare("INSERT INTO payment_orders
         (customer_id, item_type, item_id, amount, razorpay_order_id, razorpay_payment_id, razorpay_signature, status, created_at, paid_at)
@@ -96,16 +94,10 @@ try {
     exit;
 }
 
-$otp = createCustomerOtp($customerId, $phone, 'register');
-$send = sendWhatsAppOtp($phone, $otp);
-
-$_SESSION['pending_customer_id'] = $customerId;
-unset($_SESSION['customer_id']);
-if (!$send['success']) {
-    $_SESSION['otp_warning'] = 'Account and payment completed, but WhatsApp OTP could not be sent: ' . $send['message'];
-}
+$_SESSION['customer_id'] = $customerId;
+unset($_SESSION['pending_customer_id']);
 
 echo json_encode([
     'success' => true,
-    'redirect' => APP_URL . '/customer/verify-otp.php'
+    'redirect' => APP_URL . '/customer/dashboard.php'
 ]);

@@ -6,26 +6,31 @@ header('Content-Type: application/json');
 $db = getDB();
 $name = trim($_POST['name'] ?? '');
 $email = trim($_POST['email'] ?? '');
-$phone = normalizeIndianPhone($_POST['phone'] ?? '');
+$phoneDigits = indianMobile10Digits($_POST['phone'] ?? '');
+$phone = normalizeIndianPhone($phoneDigits);
 $password = $_POST['password'] ?? '';
 $confirm = $_POST['confirm_password'] ?? '';
 $planId = intval($_POST['plan_id'] ?? 0);
 $addonIds = array_values(array_unique(array_filter(array_map('intval', $_POST['addons'] ?? []))));
 
-if ($name === '' || strlen($name) < 2) {
+if ($name === '' || strlen($name) < 2 || strlen($name) > 150) {
     echo json_encode(['success' => false, 'message' => 'Please enter your full name.']);
     exit;
 }
-if (!isValidIndianPhone($phone)) {
-    echo json_encode(['success' => false, 'message' => 'Please enter a valid Indian WhatsApp number.']);
+if (!isValidIndianMobile10($phoneDigits)) {
+    echo json_encode(['success' => false, 'message' => 'Please enter a valid 10 digit Indian WhatsApp number.']);
     exit;
 }
 if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     echo json_encode(['success' => false, 'message' => 'Please enter a valid email address.']);
     exit;
 }
-if (strlen($password) < 8) {
-    echo json_encode(['success' => false, 'message' => 'Password must be at least 8 characters.']);
+if (strlen($email) > 190) {
+    echo json_encode(['success' => false, 'message' => 'Email address is too long.']);
+    exit;
+}
+if (strlen($password) < 8 || strlen($password) > 72) {
+    echo json_encode(['success' => false, 'message' => 'Password must be 8 to 72 characters.']);
     exit;
 }
 if ($password !== $confirm) {
@@ -75,39 +80,50 @@ if ($totalAmount <= 0) {
     exit;
 }
 
-$db->prepare("INSERT INTO pending_registrations
-    (name, phone, email, password_hash, plan_id, addon_ids, plan_amount, addon_amount, total_amount, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'created', NOW())")
-    ->execute([
-        $name,
-        $phone,
-        $email !== '' ? $email : null,
-        password_hash($password, PASSWORD_DEFAULT),
-        $planId,
-        json_encode($addonIds),
-        $planAmount,
-        $addonAmount,
-        $totalAmount
-    ]);
+$otp = (string) random_int(100000, 999999);
+$otpHash = password_hash($otp, PASSWORD_DEFAULT);
 
-$pendingId = $db->lastInsertId();
-$receipt = 'reg_' . $pendingId . '_' . time();
-$order = razorpayCreateOrder((int) round($totalAmount * 100), $receipt);
+try {
+    $db->beginTransaction();
+    $db->prepare("UPDATE pending_registrations SET status = 'failed'
+        WHERE status = 'created' AND (phone = ? OR (? <> '' AND email = ?))")
+        ->execute([$phone, $email, $email]);
 
-if (!$order['success']) {
-    $db->prepare("UPDATE pending_registrations SET status = 'failed' WHERE id = ?")->execute([$pendingId]);
-    echo json_encode(['success' => false, 'message' => $order['message']]);
+    $db->prepare("INSERT INTO pending_registrations
+        (name, phone, email, password_hash, plan_id, addon_ids, plan_amount, addon_amount, total_amount, otp_hash, otp_expires_at, otp_attempts, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), 0, 'created', NOW())")
+        ->execute([
+            $name,
+            $phone,
+            $email !== '' ? $email : null,
+            password_hash($password, PASSWORD_DEFAULT),
+            $planId,
+            json_encode($addonIds),
+            $planAmount,
+            $addonAmount,
+            $totalAmount,
+            $otpHash
+        ]);
+    $pendingId = (int) $db->lastInsertId();
+    $db->commit();
+} catch (Throwable $e) {
+    if ($db->inTransaction()) {
+        $db->rollBack();
+    }
+    echo json_encode(['success' => false, 'message' => 'Could not start registration. Please try again.']);
     exit;
 }
 
-$rzp = $order['data'];
-$db->prepare("UPDATE pending_registrations SET razorpay_order_id = ? WHERE id = ?")
-    ->execute([$rzp['id'], $pendingId]);
+$send = sendWhatsAppOtp($phone, $otp);
+if (!$send['success']) {
+    $db->prepare("UPDATE pending_registrations SET status = 'failed' WHERE id = ?")->execute([$pendingId]);
+    echo json_encode(['success' => false, 'message' => 'Could not send WhatsApp OTP: ' . $send['message']]);
+    exit;
+}
 
 echo json_encode([
     'success' => true,
-    'pending_registration_id' => (int) $pendingId,
-    'razorpay_order_id' => $rzp['id'],
-    'amount' => (int) $rzp['amount'],
-    'description' => 'AI Google Reviews - ' . $plan['name']
+    'pending_registration_id' => $pendingId,
+    'phone' => $phone,
+    'message' => 'OTP sent to WhatsApp. Verify OTP to continue to payment.'
 ]);

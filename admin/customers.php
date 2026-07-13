@@ -41,7 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_customer') {
     $name = trim($_POST['name'] ?? '');
-    $phone = normalizeIndianPhone($_POST['phone'] ?? '');
+    $phoneDigits = indianMobile10Digits($_POST['phone'] ?? '');
+    $phone = normalizeIndianPhone($phoneDigits);
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $isActive = isset($_POST['is_active']) ? 1 : 0;
@@ -53,8 +54,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         if ($name === '' || $phone === '' || $password === '') {
             throw new RuntimeException('Name, WhatsApp number, and password are required.');
         }
-        if (!isValidIndianPhone($phone)) {
-            throw new RuntimeException('Please enter a valid Indian WhatsApp number.');
+        if (!isValidIndianMobile10($phoneDigits)) {
+            throw new RuntimeException('Please enter a valid 10 digit Indian WhatsApp number.');
         }
         if (strlen($password) < 6) {
             throw new RuntimeException('Password must be at least 6 characters.');
@@ -389,7 +390,7 @@ include __DIR__ . '/_layout.php';
       </div>
       <div class="form-group">
         <label>WhatsApp Number *</label>
-        <input type="text" name="phone" required placeholder="9876543210" value="<?= $isCreateCustomerPost ? htmlspecialchars($_POST['phone'] ?? '') : '' ?>">
+        <input type="text" name="phone" required inputmode="numeric" minlength="10" maxlength="10" pattern="[6-9][0-9]{9}" placeholder="9876543210" value="<?= $isCreateCustomerPost ? htmlspecialchars($_POST['phone'] ?? '') : '' ?>">
       </div>
       <div class="form-group">
         <label>Email</label>

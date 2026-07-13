@@ -21,7 +21,7 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Register & Buy Plan - AI Google Reviews</title>
+  <title>Register - AI Google Reviews</title>
   <style>
     :root{--primary:#058a36;--primary-dark:#04662a;--gold:#f0b400;--text:#102016;--muted:#667569;--line:#dce8df;--bg:#f6fbf7;--radius:8px}
     *{box-sizing:border-box;margin:0;padding:0}
@@ -52,7 +52,9 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
     .summary-row.total{border-top:1px solid var(--line);margin-top:6px;padding-top:12px;color:var(--text);font-weight:900;font-size:1.12rem}
     .btn{width:100%;border:0;border-radius:var(--radius);padding:14px;background:var(--primary);color:#fff;font-weight:900;margin-top:18px;cursor:pointer;font-size:1rem}
     .btn:hover{background:var(--primary-dark)}.btn:disabled{opacity:.58;cursor:not-allowed}
-    .alert{padding:12px;border-radius:var(--radius);margin:14px 0;font-size:.9rem}.alert-error{background:#fee2e2;color:#991b1b}.alert-info{background:#eff6ff;color:#1e40af}
+    .otp-panel{display:none;border:1px solid var(--line);border-radius:var(--radius);padding:16px;background:#f8fcf8;margin-top:18px}
+    .otp-panel.active{display:block}.otp-input{text-align:center;letter-spacing:.2em;font-size:1.25rem}
+    .alert{padding:12px;border-radius:var(--radius);margin:14px 0;font-size:.9rem}.alert-error{background:#fee2e2;color:#991b1b}.alert-info{background:#eff6ff;color:#1e40af}.alert-success{background:#dcfce7;color:#166534}
     .links{text-align:center;margin-top:18px;color:var(--muted);font-size:.92rem}.links a{color:var(--primary);font-weight:800}
     @media(max-width:860px){body{padding:16px}.shell{grid-template-columns:1fr}.panel{padding:22px}.plan-top,.addon-top{flex-direction:column}.price{font-size:1.45rem}}
   </style>
@@ -60,16 +62,16 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
 <body>
   <div class="shell">
     <section class="panel">
-      <div class="brand"><div class="mark">G*</div><div><h1>Create account after payment</h1><p class="lead">Choose a plan, pay securely, then verify your WhatsApp number.</p></div></div>
+      <div class="brand"><div class="mark">G*</div><div><h1>Verify WhatsApp, then pay</h1><p class="lead">First verify your 10 digit WhatsApp number with OTP. After OTP verification, complete payment to create your account.</p></div></div>
       <?php if ($rzpKey === ''): ?>
-        <div class="alert alert-info">Razorpay is not configured yet. Registration is payment-first, so checkout will work after admin adds Razorpay keys.</div>
+        <div class="alert alert-info">Razorpay is not configured yet. Registration checkout will work after admin adds Razorpay keys.</div>
       <?php endif; ?>
       <form id="registerForm">
         <label>Name *</label>
         <input type="text" name="name" required value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
 
         <label>WhatsApp Number *</label>
-        <input type="tel" name="phone" required placeholder="9780551900" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
+        <input type="tel" name="phone" required inputmode="numeric" minlength="10" maxlength="10" pattern="[6-9][0-9]{9}" placeholder="9780551900" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
 
         <label>Email</label>
         <input type="email" name="email" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
@@ -86,19 +88,26 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
           <div class="summary-row total"><span>Total today</span><strong id="summaryTotal">₹0</strong></div>
         </div>
 
-        <button class="btn" id="payButton" type="submit" <?= (!$plans || $rzpKey === '') ? 'disabled' : '' ?>>Pay & Create Account</button>
+        <button class="btn" id="sendOtpButton" type="submit" <?= (!$plans || $rzpKey === '') ? 'disabled' : '' ?>>Send OTP</button>
       </form>
+
+      <div class="otp-panel" id="otpPanel">
+        <label>WhatsApp OTP *</label>
+        <input class="otp-input" type="text" id="otpInput" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="000000">
+        <button class="btn" id="verifyOtpButton" type="button">Verify OTP & Pay</button>
+      </div>
+
       <div id="message"></div>
       <div class="links">
         Already registered? <a href="<?= APP_URL ?>/customer/login.php">Login</a><br>
-        By paying, you agree to the <a href="<?= APP_URL ?>/terms-and-conditions.php" target="_blank" rel="noopener">Terms</a>
+        By registering, you agree to the <a href="<?= APP_URL ?>/terms-and-conditions.php" target="_blank" rel="noopener">Terms</a>
         and <a href="<?= APP_URL ?>/privacy-policy.php" target="_blank" rel="noopener">Privacy Policy</a>.
       </div>
     </section>
 
     <section class="panel">
       <h1>Choose pricing plan</h1>
-      <p class="lead">An account is created only after successful payment. Plans activate your customer dashboard and Google Review page.</p>
+      <p class="lead">OTP is verified first. Your account is created only after successful payment.</p>
 
       <div class="plans">
         <?php foreach ($plans as $plan): ?>
@@ -146,7 +155,11 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
   const RAZORPAY_KEY = <?= json_encode($rzpKey) ?>;
   const form = document.getElementById('registerForm');
   const message = document.getElementById('message');
-  const payButton = document.getElementById('payButton');
+  const sendOtpButton = document.getElementById('sendOtpButton');
+  const otpPanel = document.getElementById('otpPanel');
+  const otpInput = document.getElementById('otpInput');
+  const verifyOtpButton = document.getElementById('verifyOtpButton');
+  let pendingRegistrationId = 0;
 
   function formatInr(value) {
     return '₹' + Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -184,6 +197,31 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
     message.innerHTML = `<div class="alert alert-error">${text}</div>`;
   }
 
+  function showSuccess(text) {
+    message.innerHTML = `<div class="alert alert-success">${text}</div>`;
+  }
+
+  function validPhone() {
+    return /^[6-9]\d{9}$/.test(form.elements['phone'].value.trim());
+  }
+
+  function setRegistrationLocked(locked) {
+    form.querySelectorAll('input').forEach(input => {
+      input.disabled = locked;
+    });
+    document.querySelectorAll('[data-plan-card] input,[data-addon-card] input').forEach(input => {
+      input.disabled = locked;
+    });
+  }
+
+  form.elements['phone'].addEventListener('input', function () {
+    this.value = this.value.replace(/\D+/g, '').slice(0, 10);
+  });
+
+  otpInput.addEventListener('input', function () {
+    this.value = this.value.replace(/\D+/g, '').slice(0, 6);
+  });
+
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     message.innerHTML = '';
@@ -195,20 +233,70 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
     if (!form.reportValidity()) {
       return;
     }
+    if (!validPhone()) {
+      showError('Please enter a valid 10 digit Indian WhatsApp number.');
+      return;
+    }
 
-    payButton.disabled = true;
-    payButton.textContent = 'Creating secure order...';
+    sendOtpButton.disabled = true;
+    sendOtpButton.textContent = 'Sending OTP...';
 
     try {
       const res = await fetch('<?= APP_URL ?>/customer/create-registration-order.php', { method: 'POST', body: new FormData(form) });
       const data = await res.json();
       if (!data.success) {
         showError(data.message || 'Could not create payment order.');
-        payButton.disabled = false;
-        payButton.textContent = 'Pay & Create Account';
+        sendOtpButton.disabled = false;
+        sendOtpButton.textContent = 'Send OTP';
         return;
       }
 
+      pendingRegistrationId = data.pending_registration_id;
+      setRegistrationLocked(true);
+      sendOtpButton.textContent = 'OTP Sent';
+      otpPanel.classList.add('active');
+      otpInput.focus();
+      showSuccess(data.message || 'OTP sent to WhatsApp. Verify OTP to continue to payment.');
+    } catch (error) {
+      showError('OTP could not be sent. Please try again.');
+      sendOtpButton.disabled = false;
+      sendOtpButton.textContent = 'Send OTP';
+    }
+  });
+
+  verifyOtpButton.addEventListener('click', async function () {
+    message.innerHTML = '';
+    const otp = otpInput.value.trim();
+    if (!pendingRegistrationId) {
+      showError('Please send OTP first.');
+      return;
+    }
+    if (!/^\d{6}$/.test(otp)) {
+      showError('Please enter the 6 digit OTP.');
+      return;
+    }
+    if (!RAZORPAY_KEY) {
+      showError('Razorpay keys are not configured. Please contact admin.');
+      return;
+    }
+
+    verifyOtpButton.disabled = true;
+    verifyOtpButton.textContent = 'Verifying OTP...';
+
+    try {
+      const otpForm = new FormData();
+      otpForm.append('pending_registration_id', pendingRegistrationId);
+      otpForm.append('otp', otp);
+      const otpRes = await fetch('<?= APP_URL ?>/customer/verify-registration-otp.php', { method: 'POST', body: otpForm });
+      const data = await otpRes.json();
+      if (!data.success) {
+        showError(data.message || 'OTP verification failed.');
+        verifyOtpButton.disabled = false;
+        verifyOtpButton.textContent = 'Verify OTP & Pay';
+        return;
+      }
+
+      verifyOtpButton.textContent = 'Opening payment...';
       const options = {
         key: RAZORPAY_KEY,
         amount: data.amount,
@@ -223,12 +311,12 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
         },
         modal: {
           ondismiss: function () {
-            payButton.disabled = false;
-            payButton.textContent = 'Pay & Create Account';
+            verifyOtpButton.disabled = false;
+            verifyOtpButton.textContent = 'Verify OTP & Pay';
           }
         },
         handler: async function (response) {
-          payButton.textContent = 'Verifying payment...';
+          verifyOtpButton.textContent = 'Verifying payment...';
           const verify = new FormData();
           verify.append('pending_registration_id', data.pending_registration_id);
           verify.append('razorpay_order_id', response.razorpay_order_id);
@@ -240,16 +328,16 @@ $defaultPlanId = ($requestedPlanId && in_array($requestedPlanId, $planIds, true)
             window.location.href = result.redirect;
           } else {
             showError(result.message || 'Payment verification failed.');
-            payButton.disabled = false;
-            payButton.textContent = 'Pay & Create Account';
+            verifyOtpButton.disabled = false;
+            verifyOtpButton.textContent = 'Verify OTP & Pay';
           }
         }
       };
       new Razorpay(options).open();
     } catch (error) {
       showError('Checkout could not start. Please try again.');
-      payButton.disabled = false;
-      payButton.textContent = 'Pay & Create Account';
+      verifyOtpButton.disabled = false;
+      verifyOtpButton.textContent = 'Verify OTP & Pay';
     }
   });
   </script>

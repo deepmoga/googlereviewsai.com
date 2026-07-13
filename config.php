@@ -119,6 +119,18 @@ function normalizeIndianPhone($phone) {
     return $digits;
 }
 
+function indianMobile10Digits($phone) {
+    $digits = preg_replace('/\D+/', '', (string) $phone);
+    if (strlen($digits) === 12 && substr($digits, 0, 2) === '91') {
+        $digits = substr($digits, 2);
+    }
+    return $digits;
+}
+
+function isValidIndianMobile10($phone) {
+    return (bool) preg_match('/^[6-9]\d{9}$/', indianMobile10Digits($phone));
+}
+
 function isValidIndianPhone($phone) {
     return (bool) preg_match('/^91[6-9]\d{9}$/', normalizeIndianPhone($phone));
 }

@@ -138,6 +138,10 @@ CREATE TABLE IF NOT EXISTS pending_registrations (
   razorpay_order_id VARCHAR(100) NULL,
   razorpay_payment_id VARCHAR(100) NULL,
   razorpay_signature VARCHAR(255) NULL,
+  otp_hash VARCHAR(255) NULL,
+  otp_expires_at DATETIME NULL,
+  otp_attempts INT NOT NULL DEFAULT 0,
+  otp_verified_at DATETIME NULL,
   status ENUM('created','paid','failed') NOT NULL DEFAULT 'created',
   customer_id INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -148,6 +152,11 @@ CREATE TABLE IF NOT EXISTS pending_registrations (
   CONSTRAINT fk_pending_registration_plan FOREIGN KEY (plan_id) REFERENCES plans(id),
   CONSTRAINT fk_pending_registration_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 );
+
+ALTER TABLE pending_registrations ADD COLUMN IF NOT EXISTS otp_hash VARCHAR(255) NULL AFTER razorpay_signature;
+ALTER TABLE pending_registrations ADD COLUMN IF NOT EXISTS otp_expires_at DATETIME NULL AFTER otp_hash;
+ALTER TABLE pending_registrations ADD COLUMN IF NOT EXISTS otp_attempts INT NOT NULL DEFAULT 0 AFTER otp_expires_at;
+ALTER TABLE pending_registrations ADD COLUMN IF NOT EXISTS otp_verified_at DATETIME NULL AFTER otp_attempts;
 
 CREATE TABLE IF NOT EXISTS payment_orders (
   id INT AUTO_INCREMENT PRIMARY KEY,
