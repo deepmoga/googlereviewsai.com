@@ -298,9 +298,18 @@ $logoUrl = $client['logo_path'] ? UPLOAD_URL . $client['logo_path'] : null;
   .reviews-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
+    flex-wrap: wrap;
     margin-bottom: 16px;
     padding: 0 4px;
+  }
+
+  .reviews-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
   }
 
   .reviews-header h3 {
@@ -318,6 +327,56 @@ $logoUrl = $client['logo_path'] ? UPLOAD_URL . $client['logo_path'] : null;
     font-size: 0.75rem;
     padding: 2px 10px;
     font-weight: 500;
+  }
+
+  .review-actions,
+  .manual-review-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .manual-review-row {
+    justify-content: center;
+    margin-top: 18px;
+  }
+
+  .review-action-btn {
+    border: 1px solid rgba(212,168,83,0.3);
+    background: rgba(212,168,83,0.1);
+    color: var(--gold-light);
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 10px 14px;
+    transition: all 0.2s ease;
+  }
+
+  .review-action-btn:hover {
+    background: rgba(212,168,83,0.18);
+    border-color: rgba(212,168,83,0.5);
+    transform: translateY(-1px);
+  }
+
+  .review-action-btn:disabled {
+    cursor: wait;
+    opacity: 0.65;
+    transform: none;
+  }
+
+  .review-action-btn-primary {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: #15110a;
+  }
+
+  .review-action-btn-primary:hover {
+    background: var(--gold-light);
+    border-color: var(--gold-light);
   }
 
   .review-cards {
@@ -470,6 +529,11 @@ $logoUrl = $client['logo_path'] ? UPLOAD_URL . $client['logo_path'] : null;
     .rating-section { padding: 28px 24px; }
     .company-name { font-size: 1.6rem; }
     .star { font-size: 2.4rem; }
+    .reviews-header { align-items: stretch; }
+    .reviews-title-row,
+    .review-actions { width: 100%; }
+    .review-actions .review-action-btn,
+    .manual-review-row .review-action-btn { flex: 1 1 100%; }
   }
 </style>
 </head>
@@ -520,6 +584,9 @@ $logoUrl = $client['logo_path'] ? UPLOAD_URL . $client['logo_path'] : null;
         <?php endfor; ?>
       </div>
       <div class="star-hint" id="starHint">Tap a star to get review suggestions</div>
+      <div class="manual-review-row">
+        <button class="review-action-btn review-action-btn-primary" type="button" onclick="openGoogleReview()">Add Review Manually</button>
+      </div>
     </div>
   <?php endif; ?>
 
@@ -535,8 +602,14 @@ $logoUrl = $client['logo_path'] ? UPLOAD_URL . $client['logo_path'] : null;
   <!-- Reviews -->
   <div class="reviews-section" id="reviewsSection">
     <div class="reviews-header">
-      <h3>Pick a review to share</h3>
-      <span class="badge" id="ratingBadge"></span>
+      <div class="reviews-title-row">
+        <h3>Pick a review to share</h3>
+        <span class="badge" id="ratingBadge"></span>
+      </div>
+      <div class="review-actions">
+        <button class="review-action-btn" type="button" id="refreshReviewsBtn" onclick="refreshReviews()">Refresh Reviews</button>
+        <button class="review-action-btn review-action-btn-primary" type="button" onclick="openGoogleReview()">Add Review Manually</button>
+      </div>
     </div>
     <div class="review-cards" id="reviewCards"></div>
   </div>
@@ -552,6 +625,8 @@ const API_URL = '<?= APP_URL ?>/api/generate-reviews.php';
 const GOOGLE_LINK = <?= json_encode($client['google_review_link']) ?>;
 const HAS_SERVICE_OPTIONS = <?= !empty($serviceOptions) ? 'true' : 'false' ?>;
 let selectedService = '';
+let selectedRating = 0;
+let isGenerating = false;
 
 const starLabels = {
   1: '⭐ Very Poor',
@@ -607,11 +682,32 @@ async function selectRating(rating) {
     return;
   }
 
+  selectedRating = rating;
+
   // Update stars UI
   document.querySelectorAll('.star').forEach((s, i) => {
     s.classList.toggle('active', i < rating);
   });
-  document.getElementById('starHint').textContent = `Generating ${rating}-star reviews...`;
+  await generateReviews(rating);
+}
+
+async function refreshReviews() {
+  if (!selectedRating) {
+    document.getElementById('starHint').textContent = 'Tap a star first, then refresh reviews';
+    return;
+  }
+
+  await generateReviews(selectedRating, true);
+}
+
+async function generateReviews(rating, isRefresh = false) {
+  if (isGenerating) return;
+
+  isGenerating = true;
+  setRefreshButtonState(true);
+  document.getElementById('starHint').textContent = isRefresh
+    ? `Refreshing ${rating}-star reviews...`
+    : `Generating ${rating}-star reviews...`;
 
   // Show loading
   document.getElementById('loading').style.display = 'block';
@@ -635,7 +731,18 @@ async function selectRating(rating) {
     const errEl = document.getElementById('errorMsg');
     errEl.style.display = 'block';
     errEl.textContent = 'Error: ' + (err.message || 'Failed to generate reviews. Please try again.');
+  } finally {
+    isGenerating = false;
+    setRefreshButtonState(false);
   }
+}
+
+function setRefreshButtonState(isLoading) {
+  const btn = document.getElementById('refreshReviewsBtn');
+  if (!btn) return;
+
+  btn.disabled = isLoading;
+  btn.textContent = isLoading ? 'Refreshing...' : 'Refresh Reviews';
 }
 
 function renderReviews(reviews, rating) {
@@ -701,6 +808,15 @@ function showToast() {
   const toast = document.getElementById('toast');
   toast.classList.add('show');
   setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function openGoogleReview() {
+  if (!GOOGLE_LINK) {
+    document.getElementById('starHint').textContent = 'Google review link is not available';
+    return;
+  }
+
+  window.location.href = GOOGLE_LINK;
 }
 
 function escapeHtml(text) {
