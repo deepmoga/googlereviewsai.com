@@ -6,7 +6,10 @@ $client = customerClient($customer['id']);
 $msg = '';
 $msgType = 'success';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (postBodyExceededLimit()) {
+    $msg = 'Uploaded form data is too large. Please upload a logo under ' . LOGO_UPLOAD_MAX_MB . 'MB.';
+    $msgType = 'error';
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $companyName = trim($_POST['company_name'] ?? '');
     $tagline = trim($_POST['tagline'] ?? '');
     $businessLocation = trim($_POST['business_location'] ?? '');
@@ -32,24 +35,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg = 'ChatGPT instructions are required so AI can write accurate reviews.';
         $msgType = 'error';
     } else {
-        $logoPath = null;
-        if (!empty($_FILES['logo']['name'])) {
-            $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
-            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'])) {
-                $msg = 'Invalid logo format. Use JPG, PNG, GIF, WEBP or SVG.';
-                $msgType = 'error';
-            } elseif ($_FILES['logo']['size'] > 2 * 1024 * 1024) {
-                $msg = 'Logo must be under 2MB.';
-                $msgType = 'error';
-            } else {
-                $filename = 'logo_' . time() . '_' . random_int(1000, 9999) . '.' . $ext;
-                if (!is_dir(UPLOAD_DIR)) {
-                    mkdir(UPLOAD_DIR, 0755, true);
-                }
-                if (move_uploaded_file($_FILES['logo']['tmp_name'], UPLOAD_DIR . $filename)) {
-                    $logoPath = $filename;
-                }
-            }
+        try {
+            $logoPath = saveUploadedLogo('logo');
+        } catch (Throwable $e) {
+            $msg = $e->getMessage();
+            $msgType = 'error';
+            $logoPath = null;
         }
 
         if ($msg === '') {
@@ -92,6 +83,7 @@ include __DIR__ . '/_layout.php';
   <p class="muted" style="margin-bottom:18px">These details power your customer-facing AI review page.</p>
 
   <form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="MAX_FILE_SIZE" value="<?= LOGO_UPLOAD_MAX_BYTES ?>">
     <div class="grid grid-2">
       <div class="form-group">
         <label>Company Name *</label>
@@ -131,8 +123,8 @@ include __DIR__ . '/_layout.php';
       <?php if ($client && $client['logo_path']): ?>
         <div style="margin-bottom:10px"><img src="<?= htmlspecialchars(UPLOAD_URL . $client['logo_path']) ?>" alt="" style="max-width:90px;max-height:90px;border:1px solid var(--line);border-radius:var(--radius);padding:6px;background:#fff"></div>
       <?php endif; ?>
-      <input type="file" name="logo" accept="image/*">
-      <span class="help">JPG, PNG, GIF, WEBP or SVG. Max 2MB.</span>
+      <input type="file" name="logo" accept=".jpg,.jpeg,.png,.gif,.webp,.svg,image/jpeg,image/png,image/gif,image/webp,image/svg+xml">
+      <span class="help">JPG, PNG, GIF, WEBP or SVG. Max <?= LOGO_UPLOAD_MAX_MB ?>MB.</span>
     </div>
 
     <div class="form-group">

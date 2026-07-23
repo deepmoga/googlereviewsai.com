@@ -33,6 +33,8 @@ define('DB_NAME', $appConfig['DB_NAME']);
 define('APP_URL', rtrim($appConfig['APP_URL'], '/'));
 define('UPLOAD_DIR', __DIR__ . '/uploads/');
 define('UPLOAD_URL', APP_URL . '/uploads/');
+define('LOGO_UPLOAD_MAX_BYTES', 5 * 1024 * 1024);
+define('LOGO_UPLOAD_MAX_MB', 5);
 
 // Start session
 if (session_status() === PHP_SESSION_NONE) {
@@ -406,6 +408,104 @@ function parseGooglePlaceId($value) {
 
 function googleReviewLinkFromPlaceId($placeId) {
     return 'https://search.google.com/local/writereview?placeid=' . rawurlencode($placeId);
+}
+
+function iniSizeToBytes($value) {
+    $value = trim((string) $value);
+    if ($value === '') {
+        return 0;
+    }
+
+    $unit = strtolower(substr($value, -1));
+    $size = (float) $value;
+    switch ($unit) {
+        case 'g':
+            $size *= 1024;
+            // no break
+        case 'm':
+            $size *= 1024;
+            // no break
+        case 'k':
+            $size *= 1024;
+            break;
+    }
+
+    return (int) $size;
+}
+
+function postBodyExceededLimit() {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        return false;
+    }
+
+    $postMaxBytes = iniSizeToBytes(ini_get('post_max_size'));
+    $contentLength = intval($_SERVER['CONTENT_LENGTH'] ?? 0);
+    return $postMaxBytes > 0 && $contentLength > $postMaxBytes && empty($_POST);
+}
+
+function logoUploadErrorMessage($errorCode) {
+    switch ((int) $errorCode) {
+        case UPLOAD_ERR_INI_SIZE:
+        case UPLOAD_ERR_FORM_SIZE:
+            return 'Logo file is too large. Upload a JPG, PNG, GIF, WEBP or SVG under ' . LOGO_UPLOAD_MAX_MB . 'MB.';
+        case UPLOAD_ERR_PARTIAL:
+            return 'Logo upload was interrupted. Please try again.';
+        case UPLOAD_ERR_NO_TMP_DIR:
+            return 'Logo upload failed because the server temporary folder is missing.';
+        case UPLOAD_ERR_CANT_WRITE:
+            return 'Logo upload failed because the server could not write the file.';
+        case UPLOAD_ERR_EXTENSION:
+            return 'Logo upload was blocked by a server extension.';
+        default:
+            return 'Logo upload failed. Please try another image.';
+    }
+}
+
+function saveUploadedLogo($fieldName = 'logo') {
+    if (!isset($_FILES[$fieldName])) {
+        return null;
+    }
+
+    $file = $_FILES[$fieldName];
+    $errorCode = intval($file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($errorCode === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+    if ($errorCode !== UPLOAD_ERR_OK) {
+        throw new RuntimeException(logoUploadErrorMessage($errorCode));
+    }
+
+    $originalName = (string) ($file['name'] ?? '');
+    $tmpName = (string) ($file['tmp_name'] ?? '');
+    $size = intval($file['size'] ?? 0);
+    $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+
+    if (!in_array($ext, $allowedExtensions, true)) {
+        throw new RuntimeException('Invalid logo format. Use JPG, PNG, GIF, WEBP or SVG.');
+    }
+    if ($size <= 0 || !is_uploaded_file($tmpName)) {
+        throw new RuntimeException('Logo upload failed. Please choose the image again.');
+    }
+    if ($size > LOGO_UPLOAD_MAX_BYTES) {
+        throw new RuntimeException('Logo must be under ' . LOGO_UPLOAD_MAX_MB . 'MB.');
+    }
+    if ($ext !== 'svg' && @getimagesize($tmpName) === false) {
+        throw new RuntimeException('Invalid image file. Please upload a valid JPG, PNG, GIF, or WEBP logo.');
+    }
+    if (!is_dir(UPLOAD_DIR) && !mkdir(UPLOAD_DIR, 0755, true)) {
+        throw new RuntimeException('Logo upload folder could not be created.');
+    }
+    if (!is_writable(UPLOAD_DIR)) {
+        throw new RuntimeException('Logo upload folder is not writable on the server.');
+    }
+
+    $filename = 'logo_' . time() . '_' . random_int(1000, 9999) . '.' . $ext;
+    if (!move_uploaded_file($tmpName, UPLOAD_DIR . $filename)) {
+        throw new RuntimeException('Logo upload failed while saving the file.');
+    }
+
+    return $filename;
 }
 
 function razorpayCreateOrder($amountPaise, $receipt) {

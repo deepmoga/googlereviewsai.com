@@ -11,6 +11,10 @@ $error = '';
 
 $plans = $db->query("SELECT * FROM plans ORDER BY is_active DESC, price ASC, id ASC")->fetchAll();
 
+if (postBodyExceededLimit()) {
+    $error = 'Uploaded form data is too large. Please upload a logo under ' . LOGO_UPLOAD_MAX_MB . 'MB.';
+}
+
 if (isset($_GET['toggle'])) {
     $id = intval($_GET['toggle']);
     $db->prepare("UPDATE customers SET is_active = !is_active WHERE id = ?")->execute([$id]);
@@ -181,24 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             throw new RuntimeException('Customer not found.');
         }
 
-        $logoPath = null;
-        if (!empty($_FILES['logo']['name'])) {
-            $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
-            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'], true)) {
-                throw new RuntimeException('Invalid logo format. Use JPG, PNG, GIF, WEBP or SVG.');
-            }
-            if ($_FILES['logo']['size'] > 2 * 1024 * 1024) {
-                throw new RuntimeException('Logo must be under 2MB.');
-            }
-            $filename = 'logo_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
-            if (!is_dir(UPLOAD_DIR)) {
-                mkdir(UPLOAD_DIR, 0755, true);
-            }
-            if (!move_uploaded_file($_FILES['logo']['tmp_name'], UPLOAD_DIR . $filename)) {
-                throw new RuntimeException('Logo upload failed.');
-            }
-            $logoPath = $filename;
-        }
+        $logoPath = saveUploadedLogo('logo');
 
         $expiresAt = customerPlanExpiresAt($customerId);
         $db->beginTransaction();
@@ -312,6 +299,7 @@ include __DIR__ . '/_layout.php';
     <?php endif; ?>
 
     <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="MAX_FILE_SIZE" value="<?= LOGO_UPLOAD_MAX_BYTES ?>">
       <input type="hidden" name="action" value="save_business">
       <input type="hidden" name="customer_id" value="<?= intval($selectedCustomer['id']) ?>">
       <input type="hidden" name="business_id" value="<?= intval($selectedBusiness['id'] ?? 0) ?>">
@@ -360,7 +348,8 @@ include __DIR__ . '/_layout.php';
               <span style="font-size:0.8rem;color:var(--muted)">Current logo. Upload a new file to replace it.</span>
             </div>
           <?php endif; ?>
-          <input type="file" name="logo" accept="image/*" style="padding:8px">
+          <input type="file" name="logo" accept=".jpg,.jpeg,.png,.gif,.webp,.svg,image/jpeg,image/png,image/gif,image/webp,image/svg+xml" style="padding:8px">
+          <small style="color:var(--muted);font-size:0.75rem;margin-top:4px">JPG, PNG, GIF, WEBP or SVG. Max <?= LOGO_UPLOAD_MAX_MB ?>MB.</small>
         </div>
 
         <div class="form-group full">
